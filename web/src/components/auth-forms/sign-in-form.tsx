@@ -50,7 +50,7 @@ export function SignInForm() {
         // Redirect to dashboard after successful sign in
         router.push('/dashboard')
       }
-    } catch (_err) {
+    } catch {
       setError('An unexpected error occurred. Please try again.')
       setIsLoading(false)
     }
