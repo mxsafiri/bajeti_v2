@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import Link from 'next/link'
 import { signUp } from '@/app/actions'
@@ -18,6 +19,7 @@ const formSchema = z.object({
 })
 
 export function SignUpForm() {
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -51,8 +53,10 @@ export function SignUpForm() {
         setError(null)
         setSuccess(true)
         form.reset()
+        // Redirect to dashboard after successful sign up
+        router.push('/dashboard')
       }
-    } catch (err) {
+    } catch (_err) {
       setError('An unexpected error occurred. Please try again.')
     } finally {
       setIsLoading(false)

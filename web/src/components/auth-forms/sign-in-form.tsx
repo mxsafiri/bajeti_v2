@@ -2,14 +2,16 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useForm } from 'react-hook-form'
+import { signIn } from '@/app/actions'
 import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
 const formSchema = z.object({
@@ -20,7 +22,7 @@ const formSchema = z.object({
 export function SignInForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { push } = useRouter() 
+  const router = useRouter() 
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -44,10 +46,11 @@ export function SignInForm() {
       if ('error' in result) {
         setError(result.error)
         setIsLoading(false)
+      } else {
+        // Redirect to dashboard after successful sign in
+        router.push('/dashboard')
       }
-      
-      // If no error, the action will redirect
-    } catch (err) {
+    } catch (_err) {
       setError('An unexpected error occurred. Please try again.')
       setIsLoading(false)
     }

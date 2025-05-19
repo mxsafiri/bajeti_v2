@@ -27,7 +27,7 @@ export default async function middleware(request: NextRequest) {
               ...options
             })
           },
-          remove(name: string, _options: { path?: string; domain?: string }) {
+          remove(name: string) {
             response.cookies.delete(name)
           },
         },
