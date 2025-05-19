@@ -31,7 +31,7 @@ export default async function DashboardPage() {
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-medium text-gray-900">Monthly Budget</h2>
           <p className="mt-2 text-sm text-gray-600">
-            You haven't created any budgets yet. Start by creating your first budget to track your expenses.
+            You haven't added any budgets yet. Create one to get started.
           </p>
           <Button className="mt-4" size="sm">Create Budget</Button>
         </div>

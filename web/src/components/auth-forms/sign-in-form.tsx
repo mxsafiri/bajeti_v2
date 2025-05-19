@@ -20,7 +20,7 @@ const formSchema = z.object({
 export function SignInForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const router = useRouter() 
+  const { push } = useRouter() 
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -47,7 +47,7 @@ export function SignInForm() {
       }
       
       // If no error, the action will redirect
-    } catch (_err) {
+    } catch (err) {
       setError('An unexpected error occurred. Please try again.')
       setIsLoading(false)
     }
@@ -131,7 +131,7 @@ export function SignInForm() {
       
       <CardFooter className="flex justify-center">
         <div className="text-sm text-muted-foreground">
-          Don't have an account?{' '}
+          Don&apos;t have an account?{' '}
           <Link href="/auth/sign-up" className="text-primary hover:underline">
             Sign up
           </Link>

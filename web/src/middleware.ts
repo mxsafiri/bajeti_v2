@@ -5,7 +5,7 @@ import { createServerClient } from '@supabase/ssr'
 export default async function middleware(request: NextRequest) {
   try {
     // Create a response to modify
-    let response = NextResponse.next({
+    const response = NextResponse.next({
       request: {
         headers: request.headers
       }
@@ -27,7 +27,7 @@ export default async function middleware(request: NextRequest) {
               ...options
             })
           },
-          remove(name: string, options: { path?: string; domain?: string }) {
+          remove(name: string, _options: { path?: string; domain?: string }) {
             response.cookies.delete(name)
           },
         },

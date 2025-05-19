@@ -45,12 +45,14 @@ export function SignUpForm() {
       const result = await signUp(formData)
       
       if ('error' in result) {
-        setError(result.error)
-      } else if ('success' in result) {
-        setSuccess(result.success)
+        setError(result.error || 'An unexpected error occurred')
+        setSuccess(false)
+      } else {
+        setError(null)
+        setSuccess(true)
         form.reset()
       }
-    } catch (_err) {
+    } catch (err) {
       setError('An unexpected error occurred. Please try again.')
     } finally {
       setIsLoading(false)
