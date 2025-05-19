@@ -1,11 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { Database } from './database.types'
 
-export const createClient = async () => {
-  // Get the cookies from the request
-  const cookieStore = await cookies()
-  
-  return createServerClient(
+export async function createClient() {
+  const cookieStore = cookies()
+
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -13,13 +13,11 @@ export const createClient = async () => {
         get(name: string) {
           return cookieStore.get(name)?.value
         },
-        set(name: string, value: string, options: any) {
-          // In Next.js App Router, we cannot set cookies on the server
-          // except in Server Actions or Route Handlers
+        set(name: string, value: string, options: { expires?: Date; path?: string; domain?: string; secure?: boolean }) {
+          cookieStore.set(name, value, options)
         },
-        remove(name: string, options: any) {
-          // In Next.js App Router, we cannot remove cookies on the server
-          // except in Server Actions or Route Handlers
+        remove(name: string, options: { path?: string; domain?: string }) {
+          cookieStore.delete(name, options)
         },
       },
     }

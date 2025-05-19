@@ -3,10 +3,9 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { signIn } from '@/app/actions'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -21,7 +20,7 @@ const formSchema = z.object({
 export function SignInForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
+  const router = useRouter() 
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -48,7 +47,7 @@ export function SignInForm() {
       }
       
       // If no error, the action will redirect
-    } catch (err) {
+    } catch (_err) {
       setError('An unexpected error occurred. Please try again.')
       setIsLoading(false)
     }
@@ -66,7 +65,9 @@ export function SignInForm() {
       <CardContent>
         {error && (
           <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md mb-4">
-            {error}
+            <Alert>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           </div>
         )}
         

@@ -50,7 +50,7 @@ export function SignUpForm() {
         setSuccess(result.success)
         form.reset()
       }
-    } catch (err) {
+    } catch (_err) {
       setError('An unexpected error occurred. Please try again.')
     } finally {
       setIsLoading(false)
