@@ -8,8 +8,8 @@ import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -59,10 +59,8 @@ export function SignInForm() {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold text-center">Sign in</CardTitle>
-        <CardDescription className="text-center">
-          Enter your email and password to sign in to your account
-        </CardDescription>
+        <CardTitle>Welcome Back</CardTitle>
+        <CardDescription>Enter your credentials to sign in</CardDescription>
       </CardHeader>
       
       <CardContent>
