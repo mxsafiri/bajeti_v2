@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
 import Image from "next/image"
 import Link from "next/link"
-import { motion, useInView, useAnimation, MotionConfig } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { TypeWriter } from "@/components/ui/type-writer"
