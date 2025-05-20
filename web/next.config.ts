@@ -5,8 +5,21 @@ const nextConfig: NextConfig = {
   experimental: {
     // Allow server actions from our proxy
     serverActions: {
-      allowedOrigins: ['localhost:3000', '127.0.0.1:62107'],
+      allowedOrigins: ['localhost:3000', '127.0.0.1:62107', 'malidaftari.netlify.app'],
     },
+  },
+  // Optimize for Netlify deployment
+  output: 'standalone',
+  // Enable image optimization
+  images: {
+    domains: ['ogsrcpvrlejmjsuhwtxt.supabase.co'],
+    formats: ['image/avif', 'image/webp'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
   },
 };
 
