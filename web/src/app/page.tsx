@@ -1,9 +1,12 @@
-import Image from "next/image";
-import Link from "next/link";
+'use client'
 
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { TypeWriter } from "@/components/ui/type-writer";
+import { useEffect, useRef } from 'react'
+import Image from "next/image"
+import Link from "next/link"
+import { motion, useInView, useAnimation, MotionConfig } from 'framer-motion'
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { TypeWriter } from "@/components/ui/type-writer"
 
 export default function Home() {
   return (
@@ -37,78 +40,118 @@ export default function Home() {
         <div className="pt-32 pb-16 sm:pt-40 sm:pb-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col items-center text-center lg:flex-row lg:text-left lg:justify-between lg:gap-12">
-              <div className="lg:max-w-xl">
-                <h2 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl">
+              <motion.div 
+                className="lg:max-w-xl"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+              >
+                <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl">
                   <TypeWriter 
-                    text="Smart budgeting for a "
+                    text="Mali bila daftari "
                     delay={70}
                   />
                   <span className="bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
                     <TypeWriter 
-                      text="better financial future"
+                      text="upotea bila habari."
                       delay={70}
                     />
                   </span>
-                </h2>
+                </h1>
                 <p className="mt-6 text-lg leading-8 text-gray-600">
                   Take control of your finances with intelligent budgeting tools, expense tracking, 
                   and AI-powered insights to help you achieve your financial goals.
                 </p>
-                <div className="mt-10 flex items-center justify-center gap-x-6 lg:justify-start">
+                <motion.div 
+                  className="mt-10 flex items-center justify-center gap-x-6 lg:justify-start"
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.2 }}
+                >
                   <Link
                     href="/auth/sign-up"
                     className="rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-md hover:bg-blue-700 hover:shadow-lg transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                   >
                     Get started
                   </Link>
-                  <Link 
-                    href="#features" 
-                    className="group text-base font-semibold text-gray-900 hover:text-blue-600 transition-colors"
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                   >
-                    Learn more{' '}
-                    <span className="inline-block transition-transform group-hover:translate-x-1" aria-hidden="true">
-                      →
-                    </span>
-                  </Link>
-                </div>
-              </div>
+                    <Link 
+                      href="#features" 
+                      className="group text-base font-semibold text-gray-900 hover:text-blue-600 transition-colors"
+                    >
+                      Learn more{' '}
+                      <span className="inline-block transition-transform group-hover:translate-x-1" aria-hidden="true">
+                        →
+                      </span>
+                    </Link>
+                  </motion.div>
+                </motion.div>  
+              </motion.div>
 
-              <div className="relative mt-10 lg:mt-0 lg:flex-shrink-0 w-full max-w-md">
-                <div className="grid grid-cols-2 gap-6 relative z-10">
-                  <div className="col-span-2 flex justify-center">
-                    <div className="hero-icon glow p-8 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl">
+              <motion.div 
+                className="relative mt-16 sm:mt-24 lg:mt-0 lg:flex-shrink-0"
+                initial={{ opacity: 0, x: 20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+              >
+                <div className="w-full max-w-md">
+                  <div className="grid grid-cols-2 gap-6 relative z-10">
+                    <motion.div 
+                      className="col-span-2 flex justify-center"
+                      whileHover={{ scale: 1.05 }}
+                      transition={{ type: 'spring', stiffness: 300 }}
+                      viewport={{ once: true }}
+                    >
+                      <div className="hero-icon glow p-8 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl">
+                        <Image
+                          src="/icons/card-icon.svg"
+                          alt="Smart card management"
+                          width={120}
+                          height={120}
+                          priority
+                        />
+                      </div>
+                    </motion.div>
+                    <motion.div 
+                      className="hero-icon glow p-8 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl"
+                      whileHover={{ scale: 1.05 }}
+                      transition={{ type: 'spring', stiffness: 300 }}
+                      viewport={{ once: true }}
+                    >
                       <Image
-                        src="/icons/card-icon.svg"
-                        alt="Smart card management"
+                        src="/icons/savings-icon.svg"
+                        alt="Track savings"
                         width={120}
                         height={120}
                         priority
                       />
-                    </div>
+                    </motion.div>
+                    <motion.div 
+                      className="hero-icon glow p-8 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl"
+                      whileHover={{ scale: 1.05 }}
+                      transition={{ type: 'spring', stiffness: 300 }}
+                      viewport={{ once: true }}
+                    >
+                      <Image
+                        src="/icons/insights-icon.svg"
+                        alt="AI insights"
+                        width={120}
+                        height={120}
+                        priority
+                      />
+                    </motion.div>
                   </div>
-                  <div className="hero-icon glow p-8 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl">
-                    <Image
-                      src="/icons/savings-icon.svg"
-                      alt="Track savings"
-                      width={120}
-                      height={120}
-                      priority
-                    />
-                  </div>
-                  <div className="hero-icon glow p-8 bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl">
-                    <Image
-                      src="/icons/insights-icon.svg"
-                      alt="AI insights"
-                      width={120}
-                      height={120}
-                      priority
-                    />
+                  <div className="absolute inset-0 -z-10">
+                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 blur-3xl" />
                   </div>
                 </div>
-                <div className="absolute inset-0 -z-10">
-                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 blur-3xl" />
-                </div>
-              </div>
+              </motion.div>
             </div>
           </div>
         </div>
@@ -122,20 +165,44 @@ export default function Home() {
           </div>
 
           <div className="mt-12 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            <Card className="p-6">
-              <h3 className="text-lg font-medium text-gray-900">Smart Budgeting</h3>
-              <p className="mt-2 text-sm text-gray-600">Create customized budgets and track your spending against them in real-time.</p>
-            </Card>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="h-full"
+            >
+              <Card className="p-6 h-full">
+                <h3 className="text-lg font-medium text-gray-900">Smart Budgeting</h3>
+                <p className="mt-2 text-sm text-gray-600">Create customized budgets and track your spending against them in real-time.</p>
+              </Card>
+            </motion.div>
 
-            <Card className="p-6">
-              <h3 className="text-lg font-medium text-gray-900">Expense Tracking</h3>
-              <p className="mt-2 text-sm text-gray-600">Easily log and categorize your expenses to understand where your money goes.</p>
-            </Card>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="h-full"
+            >
+              <Card className="p-6 h-full">
+                <h3 className="text-lg font-medium text-gray-900">Expense Tracking</h3>
+                <p className="mt-2 text-sm text-gray-600">Easily log and categorize your expenses to understand where your money goes.</p>
+              </Card>
+            </motion.div>
 
-            <Card className="p-6">
-              <h3 className="text-lg font-medium text-gray-900">AI Insights</h3>
-              <p className="mt-2 text-sm text-gray-600">Get personalized recommendations and insights powered by AI to help you save more.</p>
-            </Card>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="h-full"
+            >
+              <Card className="p-6 h-full">
+                <h3 className="text-lg font-medium text-gray-900">AI Insights</h3>
+                <p className="mt-2 text-sm text-gray-600">Get personalized recommendations and insights powered by AI to help you save more.</p>
+              </Card>
+            </motion.div>
           </div>
         </div>
       </section>
