@@ -2,13 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // Use built-in SWC compiler features
+  compiler: {
+    // Enable built-in styled-components support
+    styledComponents: true
+  },
   experimental: {
     // Allow server actions from our proxy
     serverActions: {
       allowedOrigins: ['localhost:3000', '127.0.0.1:62107', 'malidaftari.netlify.app'],
     },
-    // Improve module resolution
-    esmExternals: 'loose',
   },
   // Optimize for Netlify deployment
   output: 'standalone',
@@ -37,7 +40,6 @@ const nextConfig: NextConfig = {
   transpilePackages: [
     'lucide-react',
     'framer-motion',
-    'styled-components',
     '@supabase/auth-helpers-nextjs',
     '@supabase/ssr',
     '@supabase/supabase-js',
