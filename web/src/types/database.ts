@@ -1,20 +1,20 @@
 // These types match the actual Supabase database schema
 
 export interface User {
-  id: number;
+  id: string;
   email: string;
   full_name: string | null;
   avatar_url: string | null;
-  created_at: string | null;
+  created_at: string;
   updated_at: string | null;
 }
 
 export interface Budget {
   id: number;
-  user_id: number;
+  user_id: string;
   month: number;
   year: number;
-  created_at: string | null;
+  created_at: string;
 }
 
 export interface Category {
@@ -34,22 +34,22 @@ export interface BudgetCategory {
 
 export interface Transaction {
   id: number;
-  user_id: number;
+  user_id: string;
   category_id: number | null;
   amount: number;
   description: string | null;
   date: string;
   is_income: boolean;
   receipt_url: string | null;
-  created_at: string | null;
+  created_at: string;
   updated_at: string | null;
   // Include the joined category data
-  categories?: Category | null;
+  categories?: Category;
 }
 
 export interface FinancialAccount {
   id: number;
-  user_id: number;
+  user_id: string;
   name: string;
   type: string;
   balance: number;
@@ -57,7 +57,7 @@ export interface FinancialAccount {
   is_active: boolean;
   institution: string | null;
   account_mask: string | null;
-  created_at: string | null;
+  created_at: string;
   updated_at: string | null;
 }
 

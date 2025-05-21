@@ -122,7 +122,7 @@ export default function DashboardPage() {
   };
 
   // Calculate max value for chart scaling
-  const maxChartValue = chartData.length > 0 ? Math.max(...chartData.map(d => d.amount)) : 100000;
+  const maxChartValue = chartData.length > 0 ? Math.max(...chartData.map(d => d.amount)) || 100000 : 100000;
 
   return (
     <div className="space-y-6">
@@ -321,7 +321,7 @@ export default function DashboardPage() {
                 ) : (
                   categorySpending.slice(0, 5).map((category) => {
                     // Calculate percentage of budget if budget exists
-                    const budgetCategory = currentBudget ? currentBudget.amount * 0.2 : 1000000; // Fallback value
+                    const budgetCategory = 1000000; // Fixed budget amount for demo
                     const progress = Math.min(100, (Number(category.total_spent) / budgetCategory) * 100);
                     
                     return (
@@ -503,8 +503,10 @@ export default function DashboardPage() {
                         date: format(new Date(), 'yyyy-MM-dd')
                       });
                       
-                      // Reload page to refresh data
-                      window.location.reload();
+                      // Refresh data without full page reload
+                      setTimeout(() => {
+                        window.location.reload();
+                      }, 500);
                     } catch (error) {
                       console.error('Error creating transaction:', error);
                       alert('Failed to save expense. Please try again.');

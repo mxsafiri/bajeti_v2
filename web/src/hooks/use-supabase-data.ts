@@ -77,86 +77,28 @@ export function useTransactions(limit = 10, dateRange?: { start: string; end: st
       throw new Error('User not authenticated');
     }
     
-    // Mock transactions data since the table doesn't exist yet
-    // In a real app, you would fetch this from the transactions table
-    const mockTransactions: Transaction[] = [
-      {
-        id: 1,
-        user_id: parseInt(user.id),
-        category_id: 1,
-        amount: 35000,
-        description: 'Grocery shopping',
-        date: new Date().toISOString().split('T')[0],
-        is_income: false,
-        receipt_url: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        categories: { id: 1, name: 'Grocery', is_system: true, created_at: new Date().toISOString() }
-      },
-      {
-        id: 2,
-        user_id: parseInt(user.id),
-        category_id: 2,
-        amount: 15000,
-        description: 'Bus fare',
-        date: new Date().toISOString().split('T')[0],
-        is_income: false,
-        receipt_url: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        categories: { id: 2, name: 'Transportation', is_system: true, created_at: new Date().toISOString() }
-      },
-      {
-        id: 3,
-        user_id: parseInt(user.id),
-        category_id: 3,
-        amount: 150000,
-        description: 'Electricity bill',
-        date: new Date(Date.now() - 86400000).toISOString().split('T')[0], // Yesterday
-        is_income: false,
-        receipt_url: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        categories: { id: 3, name: 'Housing', is_system: true, created_at: new Date().toISOString() }
-      },
-      {
-        id: 4,
-        user_id: parseInt(user.id),
-        category_id: 4,
-        amount: 50000,
-        description: 'Dinner out',
-        date: new Date(Date.now() - 86400000).toISOString().split('T')[0], // Yesterday
-        is_income: false,
-        receipt_url: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        categories: { id: 4, name: 'Food', is_system: true, created_at: new Date().toISOString() }
-      },
-      {
-        id: 5,
-        user_id: parseInt(user.id),
-        category_id: 5,
-        amount: 25000,
-        description: 'Movie tickets',
-        date: new Date(Date.now() - 172800000).toISOString().split('T')[0], // 2 days ago
-        is_income: false,
-        receipt_url: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        categories: { id: 5, name: 'Entertainment', is_system: true, created_at: new Date().toISOString() }
-      }
-    ];
+    // Build the query
+    let query = supabase
+      .from('transactions')
+      .select('*, categories(*)')
+      .eq('user_id', user.id)
+      .order('date', { ascending: false });
     
-    // Filter by date range if provided
-    let filteredTransactions = mockTransactions;
+    // Apply date range filter if provided
     if (dateRange) {
-      filteredTransactions = mockTransactions.filter(t => 
-        t.date >= dateRange.start && t.date <= dateRange.end
-      );
+      query = query
+        .gte('date', dateRange.start)
+        .lte('date', dateRange.end);
     }
     
-    // Limit the results
-    return filteredTransactions.slice(0, limit);
+    // Apply limit
+    query = query.limit(limit);
+    
+    // Execute the query
+    const { data, error } = await query;
+    
+    if (error) throw error;
+    return data as Transaction[];
   }, [limit, dateRange?.start, dateRange?.end]);
 }
 
@@ -182,29 +124,14 @@ export function useTransactionsByCategory(categoryId: number) {
 // Categories hooks
 export function useCategories() {
   return useFetchData(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    // Query the categories table
+    const { data, error } = await supabase
+      .from('categories')
+      .select('*')
+      .order('name');
     
-    if (!user) {
-      throw new Error('User not authenticated');
-    }
-    
-    // Mock categories data
-    // In a real app, you would fetch this from the categories table
-    const mockCategories: Category[] = [
-      { id: 1, name: 'Grocery', is_system: true, created_at: new Date().toISOString() },
-      { id: 2, name: 'Transportation', is_system: true, created_at: new Date().toISOString() },
-      { id: 3, name: 'Housing', is_system: true, created_at: new Date().toISOString() },
-      { id: 4, name: 'Food', is_system: true, created_at: new Date().toISOString() },
-      { id: 5, name: 'Entertainment', is_system: true, created_at: new Date().toISOString() },
-      { id: 6, name: 'Utilities', is_system: true, created_at: new Date().toISOString() },
-      { id: 7, name: 'Education', is_system: true, created_at: new Date().toISOString() },
-      { id: 8, name: 'Health', is_system: true, created_at: new Date().toISOString() },
-      { id: 9, name: 'Personal', is_system: true, created_at: new Date().toISOString() },
-      { id: 10, name: 'Debt', is_system: true, created_at: new Date().toISOString() },
-      { id: 11, name: 'Other', is_system: true, created_at: new Date().toISOString() }
-    ];
-    
-    return mockCategories;
+    if (error) throw error;
+    return data as Category[];
   }, []);
 }
 
