@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       budget_categories: {
@@ -90,6 +90,128 @@ export interface Database {
           id?: number
           is_system?: boolean | null
           name?: string
+        }
+        Relationships: []
+      }
+      financial_accounts: {
+        Row: {
+          account_mask: string | null
+          balance: number
+          created_at: string | null
+          currency: string
+          id: number
+          institution: string | null
+          is_active: boolean
+          name: string
+          type: string
+          updated_at: string | null
+          user_id: number
+        }
+        Insert: {
+          account_mask?: string | null
+          balance: number
+          created_at?: string | null
+          currency: string
+          id?: number
+          institution?: string | null
+          is_active: boolean
+          name: string
+          type: string
+          updated_at?: string | null
+          user_id: number
+        }
+        Update: {
+          account_mask?: string | null
+          balance?: number
+          created_at?: string | null
+          currency?: string
+          id?: number
+          institution?: string | null
+          is_active?: boolean
+          name?: string
+          type?: string
+          updated_at?: string | null
+          user_id?: number
+        }
+        Relationships: []
+      }
+      transactions: {
+        Row: {
+          amount: number
+          category_id: number | null
+          created_at: string
+          date: string
+          description: string | null
+          id: number
+          is_income: boolean
+          receipt_url: string | null
+          type: string | null
+          updated_at: string | null
+          user_id: number
+        }
+        Insert: {
+          amount: number
+          category_id?: number | null
+          created_at?: string
+          date: string
+          description?: string | null
+          id?: number
+          is_income?: boolean
+          receipt_url?: string | null
+          type?: string | null
+          updated_at?: string | null
+          user_id: number
+        }
+        Update: {
+          amount?: number
+          category_id?: number | null
+          created_at?: string
+          date?: string
+          description?: string | null
+          id?: number
+          is_income?: boolean
+          receipt_url?: string | null
+          type?: string | null
+          updated_at?: string | null
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      users: {
+        Row: {
+          auth_id: string
+          avatar_url: string | null
+          created_at: string
+          email: string
+          full_name: string | null
+          id: number
+          updated_at: string | null
+        }
+        Insert: {
+          auth_id: string
+          avatar_url?: string | null
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id?: number
+          updated_at?: string | null
+        }
+        Update: {
+          auth_id?: string
+          avatar_url?: string | null
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: number
+          updated_at?: string | null
         }
         Relationships: []
       }

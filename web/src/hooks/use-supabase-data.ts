@@ -55,18 +55,44 @@ export function useCurrentUser() {
       throw new Error('User not authenticated');
     }
     
-    // Since we don't have a users table in the current schema, return a mock user
-    // In a real app, you would fetch this from the users table
+        // Get the user data from the users table
+    // Using a type assertion to help TypeScript understand our database schema
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('auth_id', user.id)
+      .single();
+      
+    if (userError) {
+      // If user doesn't exist in the database yet, create a minimal user record
+      return {
+        id: user.id,
+        auth_id: user.id,
+        email: user.email || '',
+        full_name: user.user_metadata?.full_name || '',
+        avatar_url: user.user_metadata?.avatar_url || '',
+        created_at: user.created_at,
+        updated_at: user.updated_at
+      } as User;
+    }
+    
+    // Use a proper type conversion to ensure the response matches our User type
+    // Using 'as any' to bypass TypeScript's type checking since we know the data structure
+    const typedUserData = userData as any;
     return {
-      id: parseInt(user.id),
-      email: user.email || '',
-      full_name: user.user_metadata?.full_name || null,
-      avatar_url: user.user_metadata?.avatar_url || null,
-      created_at: user.created_at,
-      updated_at: user.updated_at
+      id: typedUserData.id.toString(),
+      auth_id: typedUserData.auth_id || user.id,
+      email: typedUserData.email || user.email || '',
+      full_name: typedUserData.full_name || user.user_metadata?.full_name || '',
+      avatar_url: typedUserData.avatar_url || user.user_metadata?.avatar_url || '',
+      created_at: typedUserData.created_at || user.created_at,
+      updated_at: typedUserData.updated_at || user.updated_at
     } as User;
   }, []);
 }
+
+// Import the type converters from our database types
+import { typeConverters } from '@/types/database';
 
 // Transactions hooks
 export function useTransactions(limit = 10, dateRange?: { start: string; end: string }) {
@@ -77,11 +103,14 @@ export function useTransactions(limit = 10, dateRange?: { start: string; end: st
       throw new Error('User not authenticated');
     }
     
+    // Get user ID from auth ID
+    const userId = typeConverters.authIdToUserId(user.id);
+    
     // Build the query
     let query = supabase
       .from('transactions')
       .select('*, categories(*)')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .order('date', { ascending: false });
     
     // Apply date range filter if provided
@@ -98,7 +127,26 @@ export function useTransactions(limit = 10, dateRange?: { start: string; end: st
     const { data, error } = await query;
     
     if (error) throw error;
-    return data as Transaction[];
+    
+    // Convert the Supabase response to our Transaction type
+    return data?.map(item => ({
+      id: item.id,
+      user_id: item.user_id,
+      category_id: item.category_id,
+      amount: item.amount,
+      description: item.description || '',
+      date: item.date,
+      is_income: item.is_income || false,
+      receipt_url: item.receipt_url || null,
+      created_at: item.created_at || '',
+      updated_at: item.updated_at || '',
+      categories: item.categories ? {
+        id: item.categories.id,
+        name: item.categories.name,
+        is_system: item.categories.is_system || false,
+        created_at: item.categories.created_at || ''
+      } : undefined
+    })) as Transaction[];
   }, [limit, dateRange?.start, dateRange?.end]);
 }
 
@@ -114,10 +162,38 @@ export function useTransactionsByCategory(categoryId: number) {
       throw new Error('User not authenticated');
     }
     
-    // Filter mock transactions by category
-    // In a real app, you would fetch this from the transactions table
-    const { data: allTransactions } = await useTransactions(100);
-    return (allTransactions || []).filter(t => t.category_id === categoryId);
+    // Get user ID from auth ID
+    const userId = typeConverters.authIdToUserId(user.id);
+    
+    // Fetch transactions directly from Supabase filtered by category
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*, categories(*)')
+      .eq('user_id', userId)
+      .eq('category_id', categoryId)
+      .order('date', { ascending: false });
+      
+    if (error) throw error;
+    
+    // Convert the Supabase response to our Transaction type
+    return data?.map(item => ({
+      id: item.id,
+      user_id: item.user_id,
+      category_id: item.category_id,
+      amount: item.amount,
+      description: item.description || '',
+      date: item.date,
+      is_income: item.is_income || false,
+      receipt_url: item.receipt_url || null,
+      created_at: item.created_at || '',
+      updated_at: item.updated_at || '',
+      categories: item.categories ? {
+        id: item.categories.id,
+        name: item.categories.name,
+        is_system: item.categories.is_system || false,
+        created_at: item.categories.created_at || ''
+      } : undefined
+    })) as Transaction[];
   }, [categoryId]);
 }
 
@@ -144,76 +220,38 @@ export function useFinancialAccounts() {
       throw new Error('User not authenticated');
     }
     
-    // Mock financial accounts data
-    const mockAccounts: FinancialAccount[] = [
-      {
-        id: 1,
-        user_id: parseInt(user.id),
-        name: 'CRDB Savings',
-        type: 'savings',
-        balance: 1250000,
-        currency: 'TZS',
-        is_active: true,
-        institution: 'CRDB Bank',
-        account_mask: '****1234',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 2,
-        user_id: parseInt(user.id),
-        name: 'NMB Checking',
-        type: 'checking',
-        balance: 850000,
-        currency: 'TZS',
-        is_active: true,
-        institution: 'NMB Bank',
-        account_mask: '****5678',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 3,
-        user_id: parseInt(user.id),
-        name: 'M-Pesa',
-        type: 'mobile',
-        balance: 125000,
-        currency: 'TZS',
-        is_active: true,
-        institution: 'Vodacom',
-        account_mask: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 4,
-        user_id: parseInt(user.id),
-        name: 'Tigo Pesa',
-        type: 'mobile',
-        balance: 75000,
-        currency: 'TZS',
-        is_active: true,
-        institution: 'Tigo',
-        account_mask: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 5,
-        user_id: parseInt(user.id),
-        name: 'SACCO Loan',
-        type: 'loan',
-        balance: -500000,
-        currency: 'TZS',
-        is_active: true,
-        institution: 'SACCO',
-        account_mask: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-    ];
+    // Get user ID from auth ID
+    const userId = typeConverters.authIdToUserId(user.id);
     
-    return mockAccounts;
+    // Fetch financial accounts from Supabase
+    const { data, error } = await supabase
+      .from('financial_accounts')
+      .select('*')
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    // If no accounts exist, return an empty array
+    if (!data || data.length === 0) {
+      return [];
+    }
+    
+    // Convert the Supabase response to our FinancialAccount type
+    // Use type assertion with 'as any' to bypass TypeScript's type checking
+    // since we know the shape of our data but TypeScript doesn't recognize it from Supabase
+    return data.map((item: any) => ({
+      id: item.id,
+      user_id: item.user_id,
+      name: item.name,
+      type: item.type,
+      balance: item.balance,
+      currency: item.currency,
+      is_active: item.is_active,
+      institution: item.institution,
+      account_mask: item.account_mask,
+      created_at: item.created_at,
+      updated_at: item.updated_at
+    })) as FinancialAccount[];
   }, []);
 }
 
@@ -233,32 +271,30 @@ export function useBudgets() {
       throw new Error('User not authenticated');
     }
     
-    // Mock budget data
-    const mockBudgets: Budget[] = [
-      {
-        id: 1,
-        user_id: parseInt(user.id),
-        month: 5, // May
-        year: 2025,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 2,
-        user_id: parseInt(user.id),
-        month: 4, // April
-        year: 2025,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 3,
-        user_id: parseInt(user.id),
-        month: 3, // March
-        year: 2025,
-        created_at: new Date().toISOString()
-      }
-    ];
+    // Get user ID from auth ID
+    const userId = typeConverters.authIdToUserId(user.id);
     
-    return mockBudgets;
+    // Fetch budgets from Supabase
+    const { data, error } = await supabase
+      .from('budgets')
+      .select('*')
+      .eq('user_id', userId);
+      
+    if (error) throw error;
+    
+    // If no budgets exist, return an empty array
+    if (!data || data.length === 0) {
+      return [];
+    }
+    
+    // Convert the Supabase response to our Budget type
+    return data.map(item => ({
+      id: item.id,
+      user_id: item.user_id,
+      month: item.month,
+      year: item.year,
+      created_at: item.created_at || ''
+    })) as Budget[];
   }, []);
 }
 
@@ -280,37 +316,64 @@ export function useCurrentBudget() {
   }, []);
 }
 
-// Budget summary hooks
+// Budget summary hook
 export function useBudgetSummary(budgetId: number) {
   return useFetchData(async () => {
-    const { data: budget } = await useCurrentBudget();
-    const { data: transactions } = await useTransactions(100);
+    // Get the budget data
+    const { data: budgetData, error: budgetError } = await supabase
+      .from('budgets')
+      .select('*')
+      .eq('id', budgetId)
+      .single();
+      
+    if (budgetError) throw budgetError;
+    if (!budgetData) throw new Error('Budget not found');
     
-    if (!budget) {
-      throw new Error('Budget not found');
-    }
+    // Get transactions for this budget's month and year
+    const startDate = `${budgetData.year}-${String(budgetData.month).padStart(2, '0')}-01`;
+    const lastDay = new Date(budgetData.year, budgetData.month, 0).getDate();
+    const endDate = `${budgetData.year}-${String(budgetData.month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     
-    // Calculate budget summary from transactions
-    const totalBudget = 3000000; // Mock total budget amount
-    const spentAmount = transactions
-      ? transactions
-          .filter(t => !t.is_income)
-          .reduce((sum, t) => sum + Number(t.amount), 0)
+    const { data: transactions } = await useTransactions(1000, { start: startDate, end: endDate });
+    
+    // Calculate total spent
+    const totalSpent = transactions && transactions.length > 0
+      ? transactions.reduce((sum, t) => sum + (t.is_income ? 0 : t.amount), 0)
       : 0;
+      
+    // Get budget categories to calculate total budget
+    const { data: budgetCategories, error: categoriesError } = await supabase
+      .from('budget_categories')
+      .select('*')
+      .eq('budget_id', budgetId);
+      
+    if (categoriesError) throw categoriesError;
     
-    const mockBudgetSummary: BudgetSummary = {
-      budget_id: budget.id,
-      budget_name: `Budget for ${budget.month}/${budget.year}`,
+    const totalBudget = budgetCategories && budgetCategories.length > 0
+      ? budgetCategories.reduce((sum, bc) => sum + Number(bc.amount), 0)
+      : 1000000; // Default budget if no categories are set
+    
+    const percentUsed = (totalSpent / totalBudget) * 100;
+    
+    // Calculate days left in the budget period
+    const today = new Date();
+    const lastDayOfMonth = new Date(budgetData.year, budgetData.month, 0).getDate();
+    const daysLeft = Math.max(0, lastDayOfMonth - today.getDate());
+    const dailyBudget = daysLeft > 0 ? (totalBudget - totalSpent) / daysLeft : 0;
+    
+    return {
+      budget_id: budgetId,
+      budget_name: `Budget for ${budgetData.month}/${budgetData.year}`,
       total_budget: totalBudget,
       period: 'monthly',
-      start_date: `${budget.year}-${String(budget.month).padStart(2, '0')}-01`,
-      end_date: null,
-      spent_amount: spentAmount,
-      remaining_amount: totalBudget - spentAmount,
-      percent_used: (spentAmount / totalBudget) * 100
-    };
-    
-    return mockBudgetSummary;
+      start_date: startDate,
+      end_date: endDate,
+      spent_amount: totalSpent,
+      remaining_amount: totalBudget - totalSpent,
+      percent_used: percentUsed,
+      days_left: daysLeft,
+      daily_budget: dailyBudget
+    } as BudgetSummary;
   }, [budgetId]);
 }
 
@@ -543,7 +606,8 @@ export async function updateUserProfile(profile: Partial<Omit<User, 'id' | 'emai
   
   // Return a mock updated user
   return {
-    id: parseInt(user.id),
+    id: user.id, // Keep as string to match User interface
+    auth_id: user.id, // Add the required auth_id property
     email: user.email || '',
     full_name: profile.full_name || user.user_metadata?.full_name || null,
     avatar_url: profile.avatar_url || user.user_metadata?.avatar_url || null,
