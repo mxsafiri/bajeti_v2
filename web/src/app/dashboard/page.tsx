@@ -37,6 +37,9 @@ import {
   useCurrentBudget,
   createTransaction
 } from '@/hooks/use-supabase-data';
+import { SpendingTrendChart } from '@/components/charts/SpendingTrendChart';
+import { CategorySpendingChart } from '@/components/charts/CategorySpendingChart';
+import { FinancialSummaryCard } from '@/components/dashboard/FinancialSummaryCard';
 
 // Category icon mapping
 const categoryIcons: Record<string, any> = {
@@ -151,32 +154,29 @@ export default function DashboardPage() {
         <div className="md:col-span-2 space-y-6">
           {/* Expense chart */}
           <Card>
-            <CardContent className="pt-6">
-              <div className="h-[200px] w-full">
-                <div className="flex items-end justify-between h-full">
-                  {chartData.map((data, index: number) => {
-                    const height = (data.amount / maxChartValue) * 100;
-                    const isToday = index === 15; // Just for demo, assuming day 16 is today
-                    
-                    return (
-                      <div 
-                        key={index} 
-                        className="group relative flex flex-col items-center"
-                        style={{ height: '100%' }}
-                      >
-                        <div 
-                          className={`w-2 rounded-t-sm ${isToday ? 'bg-blue-500' : 'bg-blue-200'}`}
-                          style={{ height: `${height}%` }}
-                        />
-                        {/* Tooltip on hover */}
-                        <div className="absolute bottom-full mb-2 hidden group-hover:block bg-gray-800 text-white text-xs rounded py-1 px-2">
-                          {formatCurrency(data.amount)}
-                        </div>
-                      </div>
-                    );
-                  })}
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Spending Trend</CardTitle>
+                <div className="flex items-center space-x-2">
+                  <Button variant="ghost" size="sm" className="h-8 text-xs">
+                    Week
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 text-xs bg-blue-50 text-blue-600">
+                    Month
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 text-xs">
+                    Year
+                  </Button>
                 </div>
               </div>
+            </CardHeader>
+            <CardContent>
+              <SpendingTrendChart 
+                data={chartData} 
+                isLoading={isLoadingTransactions} 
+                formatCurrency={formatCurrency} 
+                currentDay={new Date().getDate()}
+              />
             </CardContent>
           </Card>
           
@@ -307,33 +307,58 @@ export default function DashboardPage() {
         
         {/* Right column - Summary and insights */}
         <div className="space-y-6">
+          {/* Financial Summary */}
+          <FinancialSummaryCard 
+            transactions={transactions || []} 
+            isLoading={isLoadingTransactions} 
+            formatCurrency={formatCurrency} 
+          />
           {/* Spending by category */}
           <Card>
-            <CardHeader>
-              <CardTitle>Where your money go?</CardTitle>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">Where your money goes</CardTitle>
+                <Button variant="ghost" size="sm" className="h-8 text-xs">
+                  View All
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              {/* Donut chart for category spending */}
+              <CategorySpendingChart 
+                data={categorySpending || []} 
+                isLoading={isLoadingCategorySpending} 
+                formatCurrency={formatCurrency} 
+              />
+              
+              {/* Top categories with progress bars */}
+              <div className="mt-4 space-y-3">
                 {isLoadingCategorySpending ? (
-                  <div className="py-4 text-center text-gray-500">Loading categories...</div>
-                ) : !categorySpending || categorySpending.length === 0 ? (
-                  <div className="py-4 text-center text-gray-500">No spending data available</div>
-                ) : (
-                  categorySpending.slice(0, 5).map((category) => {
-                    // Calculate percentage of budget if budget exists
-                    const budgetCategory = 1000000; // Fixed budget amount for demo
-                    const progress = Math.min(100, (Number(category.total_spent) / budgetCategory) * 100);
+                  <div className="py-2 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <div className="w-24 h-4 bg-gray-200 rounded animate-pulse"></div>
+                      <div className="w-16 h-4 bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded animate-pulse"></div>
+                  </div>
+                ) : categorySpending && categorySpending.length > 0 ? (
+                  categorySpending.slice(0, 3).map((category) => {
+                    // Calculate percentage of budget with a fixed budget amount
+                    const budgetAmount = 1000000; // Fixed budget amount for demo
+                    const progress = Math.min(100, (Number(category.total_spent) / budgetAmount) * 100);
                     
                     return (
-                      <div key={category.category_id} className="space-y-2">
+                      <div key={category.category_id} className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium">{category.category_name}</p>
-                          <p className="text-sm font-medium">{formatCurrency(category.total_spent)}</p>
+                          <p className="text-xs font-medium">{category.category_name}</p>
+                          <p className="text-xs font-medium">{formatCurrency(category.total_spent)}</p>
                         </div>
-                        <Progress value={progress} className="bg-emerald-500" />
+                        <Progress value={progress} className="h-1.5" />
                       </div>
                     );
                   })
+                ) : (
+                  <div className="py-2 text-center text-gray-500 text-xs">No spending data available</div>
                 )}
               </div>
             </CardContent>
@@ -399,57 +424,61 @@ export default function DashboardPage() {
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+              className="bg-white rounded-xl shadow-xl max-w-md w-full p-6"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">Add Expense</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-800">Add Expense</h2>
                 <Button
                   variant="ghost"
                   size="icon"
+                  className="rounded-full hover:bg-gray-100"
                   onClick={() => setIsQuickAddOpen(false)}
                 >
                   <X className="h-5 w-5" />
                 </Button>
               </div>
               
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="amount">Amount</Label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
+              <div className="space-y-5">
+                {/* Amount input with large display */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <Label htmlFor="amount" className="text-sm text-blue-700">Amount</Label>
+                  <div className="relative mt-1">
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-blue-500" />
                     <Input 
                       id="amount" 
                       placeholder="0.00" 
-                      className="pl-10" 
+                      className="pl-10 text-xl font-semibold h-12 border-blue-200 focus:border-blue-500 focus:ring-blue-500" 
                       value={newExpense.amount}
                       onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
                     />
                   </div>
                 </div>
                 
+                {/* Category selection with icons */}
                 <div>
-                  <Label htmlFor="category">Category</Label>
-                  <div className="grid grid-cols-4 gap-2 mt-2">
+                  <Label htmlFor="category" className="text-sm font-medium">Category</Label>
+                  <div className="grid grid-cols-4 gap-3 mt-2">
                     {isLoadingCategories ? (
-                      <div className="col-span-4 py-4 text-center text-gray-500">Loading categories...</div>
+                      <div className="col-span-4 py-4 flex justify-center">
+                        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                      </div>
                     ) : !categoriesData || categoriesData.length === 0 ? (
                       <div className="col-span-4 py-4 text-center text-gray-500">No categories available</div>
                     ) : (
                       categoriesData
-                        .filter(c => !c.is_income)
                         .slice(0, 8)
                         .map((category) => {
                           const Icon = categoryIcons[category.name] || DollarSign;
-                          const isSelected = newExpense.category_id === category.id;
+                          const isSelected = newExpense.category_id === category.id.toString();
                           return (
                             <div
                               key={category.id}
-                              className={`${isSelected ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'} p-3 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity`}
-                              onClick={() => setNewExpense({...newExpense, category_id: category.id})}
+                              className={`${isSelected ? 'bg-blue-500 text-white shadow-md' : 'bg-gray-100 text-gray-700'} p-3 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:opacity-90 transition-all duration-200 ${isSelected ? 'scale-105' : ''}`}
+                              onClick={() => setNewExpense({...newExpense, category_id: category.id.toString()})}
                             >
-                              <Icon className="h-5 w-5 mb-1" />
-                              <span className="text-xs">{category.name}</span>
+                              <Icon className="h-6 w-6 mb-1" />
+                              <span className="text-xs font-medium">{category.name}</span>
                             </div>
                           );
                         })
@@ -457,28 +486,33 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 
+                {/* Description input */}
                 <div>
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description" className="text-sm font-medium">Description</Label>
                   <Input 
                     id="description" 
                     placeholder="What was this expense for?" 
+                    className="mt-1"
                     value={newExpense.description}
                     onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
                   />
                 </div>
                 
+                {/* Date input */}
                 <div>
-                  <Label htmlFor="date">Date</Label>
+                  <Label htmlFor="date" className="text-sm font-medium">Date</Label>
                   <Input 
                     id="date" 
                     type="date" 
+                    className="mt-1"
                     value={newExpense.date}
                     onChange={(e) => setNewExpense({...newExpense, date: e.target.value})}
                   />
                 </div>
                 
+                {/* Save button */}
                 <Button 
-                  className="w-full" 
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 h-12 mt-2 rounded-lg font-medium" 
                   onClick={async () => {
                     if (!newExpense.amount || !newExpense.category_id) {
                       alert('Please enter an amount and select a category');
@@ -488,7 +522,7 @@ export default function DashboardPage() {
                     try {
                       await createTransaction({
                         amount: parseFloat(newExpense.amount),
-                        category_id: newExpense.category_id,
+                        category_id: newExpense.category_id ? parseInt(newExpense.category_id) : null,
                         description: newExpense.description,
                         date: newExpense.date,
                         is_income: false,
@@ -503,7 +537,7 @@ export default function DashboardPage() {
                         date: format(new Date(), 'yyyy-MM-dd')
                       });
                       
-                      // Refresh data without full page reload
+                      // Show success message and refresh data without full page reload
                       setTimeout(() => {
                         window.location.reload();
                       }, 500);
