@@ -220,7 +220,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_category_spending: {
+        Args: {
+          user_id: number;
+        };
+        Returns: Array<{
+          category_id: number;
+          category_name: string;
+          total_spent: number;
+          budget_amount: number | null;
+          percentage_used: number | null;
+        }>;
+      };
     }
     Enums: {
       [_ in never]: never
