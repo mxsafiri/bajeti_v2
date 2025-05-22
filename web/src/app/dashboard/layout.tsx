@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -13,12 +13,14 @@ import {
   Settings, 
   LogOut,
   Menu,
-  X,
-  User
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { signOut } from '@/app/actions';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Toaster } from '@/components/ui/toaster';
+import { useCurrentUser } from '@/hooks/use-supabase-data';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -33,17 +35,7 @@ interface NavItem {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [user, setUser] = useState<{ name: string; email: string; avatar?: string } | null>(null);
-  
-  // Simulate fetching user data
-  useEffect(() => {
-    // In a real app, this would come from your auth context or API
-    setUser({
-      name: 'Samantha',
-      email: 'samantha@email.com',
-      avatar: '/avatars/user-avatar.png'
-    });
-  }, []);
+  const { data: currentUser, isLoading } = useCurrentUser();
 
   const navItems: NavItem[] = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -99,16 +91,28 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 
                 {/* User profile for mobile */}
                 <div className="px-4 py-4 mb-6 flex items-center border-b border-blue-100">
-                  <Avatar className="h-10 w-10 border-2 border-blue-100">
-                    <AvatarImage src={user?.avatar} alt={user?.name || 'User'} />
-                    <AvatarFallback className="bg-blue-100 text-blue-600">
-                      {user?.name?.charAt(0) || 'U'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="ml-3">
-                    <p className="text-sm font-medium">{user?.name || 'User'}</p>
-                    <p className="text-xs text-gray-500">{user?.email || 'user@example.com'}</p>
-                  </div>
+                  {isLoading ? (
+                    <div className="flex items-center">
+                      <Skeleton className="h-10 w-10 rounded-full" />
+                      <div className="ml-3">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-3 w-32 mt-1" />
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Avatar className="h-10 w-10 border-2 border-blue-100">
+                        <AvatarImage src={currentUser?.avatar_url || ''} alt={currentUser?.full_name || 'User'} />
+                        <AvatarFallback className="bg-blue-100 text-blue-600">
+                          {currentUser?.full_name?.charAt(0) || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium">{currentUser?.full_name || 'User'}</p>
+                        <p className="text-xs text-gray-500">{currentUser?.email || 'user@example.com'}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
                 
                 <nav className="px-4 space-y-2">
@@ -164,14 +168,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           
           {/* User profile */}
           <div className="px-6 py-4 mb-6 flex flex-col items-center border-b border-blue-100">
-            <Avatar className="h-16 w-16 border-2 border-blue-100 mb-3">
-              <AvatarImage src={user?.avatar} alt={user?.name || 'User'} />
-              <AvatarFallback className="bg-blue-100 text-blue-600 text-lg">
-                {user?.name?.charAt(0) || 'U'}
-              </AvatarFallback>
-            </Avatar>
-            <h2 className="text-sm font-medium">{user?.name || 'User'}</h2>
-            <p className="text-xs text-gray-500">{user?.email || 'user@example.com'}</p>
+            {isLoading ? (
+              <div className="flex flex-col items-center">
+                <Skeleton className="h-16 w-16 rounded-full mb-3" />
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-40 mt-1" />
+              </div>
+            ) : (
+              <>
+                <Avatar className="h-16 w-16 border-2 border-blue-100 mb-3">
+                  <AvatarImage src={currentUser?.avatar_url || ''} alt={currentUser?.full_name || 'User'} />
+                  <AvatarFallback className="bg-blue-100 text-blue-600 text-lg">
+                    {currentUser?.full_name?.charAt(0) || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="text-center">
+                  <p className="font-medium">{currentUser?.full_name || 'User'}</p>
+                  <p className="text-xs text-gray-500">{currentUser?.email || 'user@example.com'}</p>
+                </div>
+              </>
+            )}
           </div>
           
           {/* Navigation */}
@@ -227,11 +243,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </div>
       
       {/* Main content */}
-      <div className="lg:pl-64">
-        <main className="p-6">
-          {children}
-        </main>
-      </div>
+      <main className="lg:pl-64 flex-1">
+        <div className="py-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+            {children}
+          </div>
+        </div>
+      </main>
+
+      {/* Toast notifications */}
+      <Toaster />
     </div>
   );
 }

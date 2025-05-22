@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Save, 
@@ -10,7 +10,8 @@ import {
   Globe, 
   CreditCard,
   Trash2,
-  ExternalLink
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,22 +19,106 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useCurrentUser } from '@/hooks/use-supabase-data';
+import { User as UserType } from '@/types/database';
+import { toast } from '@/components/ui/use-toast';
+import { supabase } from '@/lib/supabase-client';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('profile');
-  const [user, setUser] = useState({
-    name: 'Samantha',
-    email: 'samantha@email.com',
-    phone: '+255 712 345 678',
-    language: 'English',
+  const { data: currentUser, isLoading, error } = useCurrentUser();
+  
+  interface SettingsFormData extends Partial<UserType> {
+    phone?: string;
+    language?: string;
+    currency?: string;
+    email_notifications?: boolean;
+    push_notifications?: boolean;
+    sms_notifications?: boolean;
+  }
+
+  const [formData, setFormData] = useState<SettingsFormData>({
+    full_name: '',
+    email: '',
+    avatar_url: '',
+    // Currency is hardcoded to TZS
     currency: 'TZS',
-    notifications: {
-      email: true,
-      push: true,
-      sms: false
-    },
-    avatar: '/avatars/user-avatar.png'
+    // Set default values for fields not in database
+    phone: '',
+    language: 'English',
+    email_notifications: true,
+    push_notifications: true,
+    sms_notifications: false
   });
+  
+  const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Update form data when user data is loaded
+  useEffect(() => {
+    if (currentUser) {
+      setFormData(prev => ({
+        ...prev,
+        full_name: currentUser.full_name || '',
+        email: currentUser.email || '',
+        avatar_url: currentUser.avatar_url || '',
+        // Keep the hardcoded currency
+        phone: prev.phone,
+        language: prev.language,
+        email_notifications: prev.email_notifications,
+        push_notifications: prev.push_notifications,
+        sms_notifications: prev.sms_notifications
+      }));
+    }
+  }, [currentUser]);
+  
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [id]: value
+    }));
+  };
+  
+  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const { id, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [id]: value
+    }));
+  };
+  
+  const handleSaveProfile = async () => {
+    if (!currentUser) return;
+    
+    setIsUpdating(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          full_name: formData.full_name,
+          avatar_url: formData.avatar_url
+          // Currency is hardcoded and not updated
+        })
+        .eq('id', currentUser.id);
+
+      if (error) throw error;
+      
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully.",
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update profile. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
   
   return (
     <div className="space-y-6">
@@ -54,51 +139,108 @@ export default function SettingsPage() {
         
         {/* Profile Tab */}
         <TabsContent value="profile" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
-              <CardDescription>Update your personal information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex flex-col sm:flex-row items-center gap-6">
-                <div className="flex flex-col items-center">
-                  <Avatar className="h-24 w-24 border-2 border-blue-100">
-                    <AvatarImage src={user.avatar} alt={user.name} />
-                    <AvatarFallback className="bg-blue-100 text-blue-600 text-xl">
-                      {user.name.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <Button variant="outline" size="sm" className="mt-4">
-                    Change Photo
-                  </Button>
-                </div>
-                
-                <div className="flex-1 space-y-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Full Name</Label>
-                      <Input id="name" value={user.name} onChange={() => {}} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email Address</Label>
-                      <Input id="email" type="email" value={user.email} onChange={() => {}} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Phone Number</Label>
-                      <Input id="phone" value={user.phone} onChange={() => {}} />
+          {isLoading ? (
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-72 mt-2" />
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  <div className="flex flex-col items-center">
+                    <Skeleton className="h-24 w-24 rounded-full" />
+                    <Skeleton className="h-8 w-24 mt-4" />
+                  </div>
+                  
+                  <div className="flex-1 space-y-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button variant="outline">Cancel</Button>
-              <Button>
-                <Save className="mr-2 h-4 w-4" />
-                Save Changes
-              </Button>
-            </CardFooter>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Profile Information</CardTitle>
+                <CardDescription>Update your personal information</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  <div className="flex flex-col items-center">
+                    <Avatar className="h-24 w-24 border-2 border-blue-100">
+                      <AvatarImage src={formData.avatar_url ?? ''} alt={formData.full_name ?? ''} />
+                      <AvatarFallback className="bg-blue-100 text-blue-600 text-xl">
+                        {formData.full_name ? formData.full_name.charAt(0) : '?'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <Button variant="outline" size="sm" className="mt-4">
+                      Change Photo
+                    </Button>
+                  </div>
+                  
+                  <div className="flex-1 space-y-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="full_name">Full Name</Label>
+                        <Input 
+                          id="full_name" 
+                          value={formData.full_name} 
+                          onChange={handleInputChange} 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="email">Email Address</Label>
+                        <Input 
+                          id="email" 
+                          type="email" 
+                          value={formData.email} 
+                          disabled 
+                          className="bg-gray-50"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="phone">Phone Number</Label>
+                        <Input 
+                          id="phone" 
+                          value={formData.phone || ''} 
+                          onChange={handleInputChange} 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="flex justify-between">
+                <Button variant="outline">Cancel</Button>
+                <Button onClick={handleSaveProfile} disabled={isUpdating}>
+                  {isUpdating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+          )}
           
           <Card className="border-red-100">
             <CardHeader>
@@ -121,81 +263,133 @@ export default function SettingsPage() {
         
         {/* Notifications Tab */}
         <TabsContent value="notifications" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>Manage how you receive notifications</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Bell className="h-5 w-5 text-gray-500" />
-                    <div>
-                      <p className="font-medium">Email Notifications</p>
-                      <p className="text-sm text-gray-500">Receive notifications via email</p>
+          {isLoading ? (
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-72 mt-2" />
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  {[...Array(3)].map((_, index) => (
+                    <div key={index} className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Skeleton className="h-5 w-5 rounded-full" />
+                        <div>
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-3 w-48 mt-1" />
+                        </div>
+                      </div>
+                      <Skeleton className="h-6 w-11 rounded-full" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Skeleton className="h-10 w-32" />
+              </CardFooter>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Notification Preferences</CardTitle>
+                <CardDescription>Manage how you receive notifications</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Bell className="h-5 w-5 text-gray-500" />
+                      <div>
+                        <p className="font-medium">Email Notifications</p>
+                        <p className="text-sm text-gray-500">Receive notifications via email</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={formData.email_notifications}
+                          onChange={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              email_notifications: !prev.email_notifications
+                            }));
+                          }}
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
-                        checked={user.notifications.email}
-                        onChange={() => {}}
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Bell className="h-5 w-5 text-gray-500" />
-                    <div>
-                      <p className="font-medium">Push Notifications</p>
-                      <p className="text-sm text-gray-500">Receive notifications on your device</p>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Bell className="h-5 w-5 text-gray-500" />
+                      <div>
+                        <p className="font-medium">Push Notifications</p>
+                        <p className="text-sm text-gray-500">Receive notifications on your device</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={formData.push_notifications}
+                          onChange={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              push_notifications: !prev.push_notifications
+                            }));
+                          }}
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
-                        checked={user.notifications.push}
-                        onChange={() => {}}
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Bell className="h-5 w-5 text-gray-500" />
-                    <div>
-                      <p className="font-medium">SMS Notifications</p>
-                      <p className="text-sm text-gray-500">Receive notifications via SMS</p>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Bell className="h-5 w-5 text-gray-500" />
+                      <div>
+                        <p className="font-medium">SMS Notifications</p>
+                        <p className="text-sm text-gray-500">Receive notifications via SMS</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={formData.sms_notifications}
+                          onChange={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              sms_notifications: !prev.sms_notifications
+                            }));
+                          }}
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
-                        checked={user.notifications.sms}
-                        onChange={() => {}}
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
                 </div>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button>Save Preferences</Button>
-            </CardFooter>
-          </Card>
+              </CardContent>
+              <CardFooter>
+                <Button onClick={handleSaveProfile} disabled={isUpdating}>
+                  {isUpdating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Preferences'
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+          )}
         </TabsContent>
         
         {/* Security Tab */}
@@ -282,45 +476,73 @@ export default function SettingsPage() {
         
         {/* Preferences Tab */}
         <TabsContent value="preferences" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Regional Settings</CardTitle>
-              <CardDescription>Customize your regional preferences</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="language">Language</Label>
-                  <select 
-                    id="language" 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    value={user.language}
-                    onChange={() => {}}
-                  >
-                    <option value="English">English</option>
-                    <option value="Swahili">Swahili</option>
-                  </select>
+          {isLoading ? (
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-72 mt-2" />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="currency">Currency</Label>
-                  <select 
-                    id="currency" 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    value={user.currency}
-                    onChange={() => {}}
-                  >
-                    <option value="TZS">Tanzanian Shilling (TZS)</option>
-                    <option value="KES">Kenyan Shilling (KES)</option>
-                    <option value="UGX">Ugandan Shilling (UGX)</option>
-                    <option value="USD">US Dollar (USD)</option>
-                  </select>
+              </CardContent>
+              <CardFooter>
+                <Skeleton className="h-10 w-32" />
+              </CardFooter>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Regional Settings</CardTitle>
+                <CardDescription>Customize your regional preferences</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="language">Language</Label>
+                    <select 
+                      id="language" 
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={formData.language}
+                      onChange={handleSelectChange}
+                    >
+                      <option value="English">English</option>
+                      <option value="Swahili">Swahili</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Currency</Label>
+                    <div className="flex h-10 w-full items-center rounded-md border bg-gray-100 px-3 py-2 text-sm text-muted-foreground">
+                      Tanzanian Shilling (TZS)
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Currency is set to TZS for all users.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button>Save Preferences</Button>
-            </CardFooter>
-          </Card>
+              </CardContent>
+              <CardFooter>
+                <Button onClick={handleSaveProfile} disabled={isUpdating}>
+                  {isUpdating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Preferences'
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+          )}
           
           <Card>
             <CardHeader>

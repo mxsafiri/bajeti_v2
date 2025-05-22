@@ -6,12 +6,13 @@
  * This interface represents our custom users table that extends auth data
  */
 export interface User {
-  id: string; // Maps to auth.users.id
-  auth_id: string; // Reference to auth.users.id
+  id: number;  // Matches database schema
+  auth_id: string;  // Matches Supabase Auth
   email: string;
   full_name: string | null;
   avatar_url: string | null;
-  created_at: string;
+  currency?: string; // Made optional as we're hardcoding to TZS for now
+  created_at: string | null;
   updated_at: string | null;
 }
 
@@ -40,10 +41,11 @@ export interface Category {
  * BudgetCategory type - represents the allocation of budget amounts to categories
  */
 export interface BudgetCategory {
-  id: number;
-  budget_id: number | null; // References budgets.id
+  id: string;
+  budget_id: string | null; // References budgets.id
   category_id: number | null; // References categories.id
   amount: number;
+  allocation_type: 'needs' | 'wants' | 'savings' | null;
   created_at: string | null;
 }
 
@@ -52,13 +54,15 @@ export interface BudgetCategory {
  */
 export interface Transaction {
   id: number;
-  user_id: number; // References users.id
-  category_id: number | null; // References categories.id
+  user_id: number;
+  account_id: number | null; // Reference to financial_accounts table
+  category_id: number | null;
   amount: number;
   description: string | null;
   date: string;
   is_income: boolean;
   receipt_url: string | null;
+  type: string | null; // Added to match database schema
   created_at: string;
   updated_at: string | null;
   // Include the joined category data
@@ -70,7 +74,7 @@ export interface Transaction {
  */
 export interface FinancialAccount {
   id: number;
-  user_id: number; // References users.id
+  user_id: number;
   name: string;
   type: string; // e.g., 'bank', 'cash', 'credit', 'investment'
   balance: number;
@@ -78,8 +82,24 @@ export interface FinancialAccount {
   is_active: boolean;
   institution: string | null;
   account_mask: string | null; // Last 4 digits of account number
-  created_at: string;
+  created_at: string | null;
   updated_at: string | null;
+}
+
+/**
+ * BudgetAllocation type - represents income allocations
+ */
+export interface BudgetAllocation {
+  id: number;
+  transaction_id: number | null; // References transactions.id
+  user_id: number; // References users.id
+  needs_amount: number;
+  wants_amount: number;
+  savings_amount: number;
+  needs_percentage: number;
+  wants_percentage: number;
+  savings_percentage: number;
+  created_at: string | null;
 }
 
 // View types - not directly mapped to database tables
@@ -88,17 +108,18 @@ export interface FinancialAccount {
  * BudgetSummary type - represents a summary of a budget
  */
 export interface BudgetSummary {
-  budget_id: number;
+  budget_id: string;
   budget_name: string;
   total_budget: number;
   period: string;
   start_date: string;
-  end_date: string | null;
-  spent_amount: number;
-  remaining_amount: number;
-  percent_used: number;
-  days_left?: number;
-  daily_budget?: number;
+  end_date: string;
+  categories: Array<{
+    category_id: number;
+    category_name: string;
+    budgeted_amount: number;
+    spent_amount: number;
+  }>;
 }
 
 /**
@@ -107,31 +128,10 @@ export interface BudgetSummary {
 export interface CategorySpending {
   category_id: number;
   category_name: string;
-  user_id: number;
+  user_id: string; // Changed from number to string to match User.id
   total_spent: number;
   transaction_count: number;
   first_transaction_date: string;
   last_transaction_date: string;
   budget?: number; // Optional budget amount for this category
-}
-
-/**
- * Type conversion utilities
- */
-export const typeConverters = {
-  // Convert database user_id (number) to auth_id (string) and vice versa
-  userIdToAuthId: (userId: number): string => userId.toString(),
-  authIdToUserId: (authId: string): number => parseInt(authId, 10),
-  
-  // Convert any string to number safely
-  toNumber: (value: string | number): number => {
-    if (typeof value === 'number') return value;
-    return parseFloat(value);
-  },
-  
-  // Convert any number to string safely
-  toString: (value: number | string): string => {
-    if (typeof value === 'string') return value;
-    return value.toString();
-  }
 }

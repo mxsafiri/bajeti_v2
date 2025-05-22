@@ -1,0 +1,242 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Database } from '@/lib/database.types';
+import type { User, Category, Transaction as DbTransaction, FinancialAccount } from '@/types/database';
+
+// Local type for the raw transaction data from Supabase with joined category data
+type SupabaseTransaction = {
+  id: string;
+  user_id: string;
+  account_id: string | null;
+  category_id: string | null;
+  amount: string | number;
+  date: string;
+  description: string | null;
+  is_income: boolean;
+  receipt_url: string | null;
+  created_at: string;
+  updated_at: string | null;
+  frequency: string | null;
+  categories: Category | null;
+};
+
+// Create Supabase client instance
+const supabase = createClientComponentClient<Database>();
+
+// Generic hook for fetching data with loading/error states and manual refetch
+export interface FetchDataResult<T> {
+  data: T | null;
+  error: Error | null;
+  isLoading: boolean;
+  refetch: () => Promise<void>;
+}
+
+function useFetchData<T>(fetchFn: () => Promise<T>, deps: any[] = []): FetchDataResult<T> {
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const result = await fetchFn();
+      setData(result);
+      setError(null);
+    } catch (err) {
+      setData(null);
+      setError(err instanceof Error ? err : new Error('An unknown error occurred'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, deps);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        const result = await fetchFn();
+        if (isMounted) {
+          setData(result);
+          setError(null);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setData(null);
+          setError(err instanceof Error ? err : new Error('An unknown error occurred'));
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, deps);
+
+  return { data, error, isLoading, refetch };
+}
+
+// Helper: Get current authenticated user's ID
+export async function getCurrentUserId(): Promise<number> {
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('No authenticated user');
+  }
+
+  // Users table uses 'id' = UUID string matching auth.users.id
+  const { data, error } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', user.id)
+    .single();
+
+  if (error) throw error;
+  if (!data) throw new Error('User profile not found');
+
+  return data.id;
+}
+
+// Helper: Get current user's profile from 'users' table
+export async function getCurrentUserProfile(): Promise<User> {
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('No authenticated user');
+  }
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('*') // select all user fields
+    .eq('id', user.id)
+    .single();
+
+  if (error) throw error;
+  if (!data) throw new Error('User profile not found');
+
+  return data;
+}
+
+// Hook: Current user data
+export function useCurrentUser() {
+  const result = useFetchData<User>(getCurrentUserProfile, []);
+  return {
+    data: result.data,
+    error: result.error,
+    isLoading: result.isLoading,
+    refetch: result.refetch
+  };
+}
+
+// Hook: Fetch transactions with optional date range and limit
+export function useTransactions(
+  limit = 10,
+  dateRange?: { start: string; end: string }
+): FetchDataResult<DbTransaction[]> {
+  return useFetchData<DbTransaction[]>(async () => {
+    const userId = await getCurrentUserId();
+    let query = supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
+
+    if (dateRange) {
+      query = query.gte('date', dateRange.start).lte('date', dateRange.end);
+    }
+
+    if (limit > 0) {
+      query = query.limit(limit);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    
+    // Transform the data to match the DbTransaction type
+    return (data as unknown as SupabaseTransaction[]).map(tx => ({
+      id: parseInt(tx.id, 10),
+      user_id: tx.user_id,
+      account_id: tx.account_id ? parseInt(tx.account_id, 10) : null,
+      category_id: tx.category_id ? parseInt(tx.category_id, 10) : null,
+      amount: Number(tx.amount),
+      date: tx.date,
+      description: tx.description || '',
+      is_income: tx.is_income,
+      receipt_url: tx.receipt_url || '',
+      created_at: tx.created_at,
+      updated_at: tx.updated_at || new Date().toISOString(),
+      frequency: (tx.frequency as DbTransaction['frequency']) || 'one_time'
+    }));
+  }, [limit, dateRange?.start, dateRange?.end]);
+}
+
+// Hook: Recent transactions (default 5)
+export function useRecentTransactions(limit = 5) {
+  return useTransactions(limit);
+}
+
+// Hook: Transactions filtered by category
+export function useTransactionsByCategory(categoryId: number): FetchDataResult<DbTransaction[]> {
+  return useFetchData<DbTransaction[]>(async () => {
+    const userId = await getCurrentUserId();
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('category_id', categoryId)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    
+    // Transform the data to match the DbTransaction type
+    return (data as unknown as SupabaseTransaction[]).map(tx => ({
+      id: parseInt(tx.id, 10),
+      user_id: tx.user_id,
+      account_id: tx.account_id ? parseInt(tx.account_id, 10) : null,
+      category_id: tx.category_id ? parseInt(tx.category_id, 10) : null,
+      amount: Number(tx.amount),
+      date: tx.date,
+      description: tx.description || '',
+      is_income: tx.is_income,
+      receipt_url: tx.receipt_url || '',
+      created_at: tx.created_at,
+      updated_at: tx.updated_at || new Date().toISOString(),
+      frequency: (tx.frequency as DbTransaction['frequency']) || 'one_time'
+    }));
+  }, [categoryId]);
+}
+
+// Hook: Categories list
+export function useCategories() {
+
+  return useFetchData<Category[]>(async () => {
+    const { data, error } = await supabase.from('categories').select('*').order('name');
+    if (error) throw error;
+    return data || [];
+  }, []);
+}
+
+// Hook: Financial accounts for current user
+export function useFinancialAccounts() {
+
+  return useFetchData<FinancialAccount[]>(async () => {
+    const userId = await getCurrentUserId();
+    const { data, error } = await supabase
+      .from('financial_accounts')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return data || [];
+  }, []);
+}
+
+// Add more hooks here following the same pattern for budgets, budget summaries, etc.
+
