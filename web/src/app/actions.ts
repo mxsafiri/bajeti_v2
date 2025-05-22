@@ -46,27 +46,55 @@ export async function signIn(formData: FormData) {
 }
 
 export async function signUp(formData: FormData) {
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-  const fullName = formData.get('fullName') as string
-  
-  const supabase = await createClient()
-  
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        full_name: fullName,
+  try {
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+    const fullName = formData.get('fullName') as string
+    
+    if (!email || !password || !fullName) {
+      return { error: 'All fields are required' }
+    }
+    
+    const supabase = await createClient()
+    
+    // First, sign up the user with Supabase Auth
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          email_redirect_to: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`,
+        },
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`,
       },
-    },
-  })
-  
-  if (error) {
-    return { error: error.message }
+    })
+    
+    if (signUpError) {
+      console.error('Sign up error:', signUpError)
+      
+      // Handle specific error cases
+      if (signUpError.message.includes('already registered')) {
+        return { error: 'This email is already registered. Please sign in instead.' }
+      }
+      
+      if (signUpError.message.includes('password')) {
+        return { error: 'Password does not meet requirements. Please use at least 6 characters.' }
+      }
+      
+      return { error: `Failed to create account: ${signUpError.message}` }
+    }
+    
+    // If we get here, the user was created successfully
+    // The database trigger will create the user profile in the public.users table
+    
+    return { 
+      success: 'Account created successfully! Please check your email to confirm your account.' 
+    }
+  } catch (error) {
+    console.error('Unexpected error during sign up:', error)
+    return { error: 'An unexpected error occurred. Please try again later.' }
   }
-  
-  return { success: 'Check your email to confirm your account' }
 }
 
 export async function signOut() {
