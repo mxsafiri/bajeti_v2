@@ -168,6 +168,86 @@ export function useCurrentBudget() {
   });
 }
 
+// Hook: Get budget summary with category breakdown
+export function useBudgetSummary(budgetId?: number) {
+  return useFetchData<{
+    total: number;
+    used: number;
+    remaining: number;
+    categories: Array<{
+      name: string;
+      amount: number;
+      percentage: number;
+    }>;
+  }>(async () => {
+    if (!budgetId) {
+      return {
+        total: 0,
+        used: 0,
+        remaining: 0,
+        categories: []
+      };
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .rpc('get_category_spending', {
+          user_id: await getCurrentUserId()
+        });
+
+      if (error) throw error;
+      
+      // Transform the category spending data to match our expected format
+      const categories = (data || []).map(cat => ({
+        name: cat.category_name || 'Uncategorized',
+        amount: cat.total_spent || 0,
+        percentage: cat.percentage_used || 0
+      }));
+      
+      const totalSpent = categories.reduce((sum, cat) => sum + (cat.amount || 0), 0);
+      
+      return {
+        total: 1000, // Default budget total, adjust as needed
+        used: totalSpent,
+        remaining: Math.max(0, 1000 - totalSpent), // Default budget - spent
+        categories
+      };
+    } catch (error) {
+      console.error('Error fetching budget summary:', error);
+      return {
+        total: 0,
+        used: 0,
+        remaining: 0,
+        categories: []
+      };
+    }
+  }, [budgetId]);
+}
+
+// Function to create a new transaction
+export async function createTransaction(transactionData: Omit<DbTransaction, 'id' | 'created_at' | 'updated_at'>) {
+  const userId = await getCurrentUserId();
+  
+  const { data, error } = await supabase
+    .from('transactions')
+    .insert([
+      {
+        ...transactionData,
+        user_id: userId,
+        amount: Number(transactionData.amount) // Ensure amount is a number
+      }
+    ])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating transaction:', error);
+    throw error;
+  }
+
+  return data;
+}
+
 export function useTransactions(limit = 100) {
   return useFetchData<DbTransaction[]>(async (): Promise<DbTransaction[]> => {
     const userId = await getCurrentUserId();

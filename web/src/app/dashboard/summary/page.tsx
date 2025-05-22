@@ -12,9 +12,16 @@ import {
   useTransactions, 
   useCurrentBudget, 
   useCategorySpending, 
-  useBudgetSummary,
-  FetchDataResult 
+  useBudgetSummary
 } from "@/hooks/use-supabase-data";
+
+// Define FetchDataResult type since it's used in multiple places
+type FetchDataResult<T> = {
+  data: T | null;
+  error: Error | null;
+  isLoading: boolean;
+  refetch: () => Promise<void>;
+};
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie } from "recharts";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -59,8 +66,11 @@ interface CategorySpending {
   name: string;
   amount: number;
   percentage: number;
-  total_spent: number;
-  category_name: string;
+  total_spent?: number;
+  category_name?: string;
+  category_id?: number;
+  budget_amount?: number | null;
+  percentage_used?: number | null;
 }
 
 interface BudgetSummary {
@@ -92,11 +102,30 @@ function getDateRange(timeframe: TimeframeType): { start: Date; end: Date } {
 
 // Custom hook to get filtered transactions based on timeframe
 const useFilteredTransactions = (timeframe: TimeframeType) => {
-  const dateRange = getDateRange(timeframe);
-  return useTransactions<Transaction[]>(1000, {
-    start: format(dateRange.start, 'yyyy-MM-dd'),
-    end: format(dateRange.end, 'yyyy-MM-dd')
-  });
+  const { data: allTransactions, ...rest } = useTransactions(1000);
+  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+  
+  useEffect(() => {
+    if (!allTransactions) return;
+    
+    const dateRange = getDateRange(timeframe);
+    const startDate = dateRange.start;
+    const endDate = dateRange.end;
+    
+    const filtered = allTransactions.filter(transaction => {
+      if (!transaction.date) return false;
+      const transactionDate = new Date(transaction.date);
+      return transactionDate >= startDate && transactionDate <= endDate;
+    });
+    
+    setFilteredTransactions(filtered);
+  }, [allTransactions, timeframe]);
+  
+  return {
+    ...rest,
+    data: filteredTransactions,
+    refetch: rest.refetch
+  };
 };
 
 export default function SummaryPage() {
@@ -115,7 +144,7 @@ export default function SummaryPage() {
   const { data: user, error: userError, isLoading: isUserLoading, refetch: refetchUser } = useCurrentUser();
   
   // Fetch transactions with proper typing
-  const transactionsResult = useTransactions<TransactionsData>(100);
+  const transactionsResult = useTransactions(100);
   const transactions = transactionsResult?.data || [];
   const isLoadingTransactions = transactionsResult?.isLoading || false;
   const transactionsError = transactionsResult?.error;
@@ -129,14 +158,14 @@ export default function SummaryPage() {
   const refetchBudget = budgetResult?.refetch;
   
   // Fetch category spending with proper typing
-  const categorySpendingResult = useCategorySpending<CategorySpendingData>();
+  const categorySpendingResult = useCategorySpending();
   const categorySpending = categorySpendingResult?.data || [];
   const isCategoryLoading = categorySpendingResult?.isLoading || false;
   const categoryError = categorySpendingResult?.error;
   const refetchCategorySpending = categorySpendingResult?.refetch;
   
   // Fetch budget summary with proper typing
-  const budgetSummaryResult = useBudgetSummary(budget?.id) as unknown as FetchDataResult<BudgetSummary>;
+  const budgetSummaryResult = useBudgetSummary(budget?.id);
   const budgetSummaryData = budgetSummaryResult?.data || null;
   const isSummaryLoading = budgetSummaryResult?.isLoading || false;
   const summaryError = budgetSummaryResult?.error;
@@ -230,9 +259,11 @@ export default function SummaryPage() {
   // Helper function to format currency
   const formatCurrency = (amount: number | null | undefined): string => {
     if (amount == null) return '-';
-    return new Intl.NumberFormat(user?.currency === 'TZS' ? 'en-TZ' : 'en-US', {
+    // Default to TZS since currency is not in the user type
+    const currency = 'TZS';
+    return new Intl.NumberFormat(currency === 'TZS' ? 'en-TZ' : 'en-US', {
       style: 'currency',
-      currency: user?.currency || 'TZS',
+      currency: currency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount);
@@ -255,11 +286,21 @@ export default function SummaryPage() {
 
     const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
 
-    // Process category spending
-    const topSpendingCategories = categorySpending
+    // Transform category spending data
+    const transformedCategorySpending = (categorySpending || []).map(cat => ({
+      name: cat.category_name || 'Uncategorized',
+      amount: cat.total_spent || 0,
+      percentage: cat.percentage_used || 0,
+      total_spent: cat.total_spent,
+      category_name: cat.category_name,
+      category_id: cat.category_id,
+      budget_amount: cat.budget_amount
+    }));
+
+    const topSpendingCategories = transformedCategorySpending
       .map(category => ({
-        name: category.category_name,
-        amount: category.total_spent,
+        name: category.name,
+        amount: category.amount,
         percentage: category.percentage,
         color: `hsl(${Math.random() * 360}, 70%, 50%)`
       }))
@@ -317,7 +358,18 @@ export default function SummaryPage() {
       // Process transactions if available
       if (Array.isArray(transactions) && transactions.length > 0 && budget && Array.isArray(categorySpending)) {
         try {
-          const summaryResult = calculateSummaryData(transactions, budget, categorySpending);
+          // Transform category spending data before passing to calculateSummaryData
+          const transformedCategorySpending = (categorySpending || []).map(cat => ({
+            name: cat.category_name || 'Uncategorized',
+            amount: cat.total_spent || 0,
+            percentage: cat.percentage_used || 0,
+            total_spent: cat.total_spent,
+            category_name: cat.category_name,
+            category_id: cat.category_id,
+            budget_amount: cat.budget_amount
+          }));
+          
+          const summaryResult = calculateSummaryData(transactions, budget, transformedCategorySpending);
           setSummaryData(summaryResult);
           setIsLoading(false);
         } catch (error) {
