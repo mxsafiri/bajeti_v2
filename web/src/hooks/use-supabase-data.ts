@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import type { Database } from '@/lib/database.types';
 import type { User as UserType, Transaction as DbTransaction, Category, FinancialAccount } from '@/types/database';
 
-const supabase = createClientComponentClient<Database>();
+// For client components, use createBrowserClient from @supabase/ssr
+// It doesn't need the cookie handling options like createServerClient does.
+const supabase = createBrowserClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // Helper function to get the current user's ID
 async function getCurrentUserId(): Promise<string> {
@@ -314,7 +319,7 @@ export function useTransactionsForAccount(accountId: number | null, limit = 100)
 
     return transactions.map(tx => ({
       id: Number(tx.id),
-      user_id: tx.user_id,
+      user_id: String(tx.user_id),
       account_id: tx.account_id == null ? null : Number(tx.account_id),
       category_id: tx.category_id == null ? null : Number(tx.category_id),
       amount: Number(tx.amount),
@@ -365,7 +370,7 @@ export function useTransactions(limit = 100) {
 
     return transactions.map(tx => ({
       id: Number(tx.id), // Ensure 'id' is number
-      user_id: tx.user_id,
+      user_id: String(tx.user_id),
       account_id: tx.account_id == null ? null : Number(tx.account_id), // Ensure 'account_id' is number or null
       category_id: tx.category_id == null ? null : Number(tx.category_id), // Ensure 'category_id' is number or null
       amount: Number(tx.amount), // Ensure 'amount' is number

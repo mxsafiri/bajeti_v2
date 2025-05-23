@@ -108,9 +108,10 @@ export default function DashboardPage() {
     if (!user) return;
 
     try {
+      const { user_id: _, ...restOfNewExpense } = newExpense; // Destructure and omit user_id from newExpense
       await createTransaction({
-        ...newExpense,
-        user_id: user.id,
+        ...restOfNewExpense,
+        user_id: user.id, // Use user.id from the authenticated user session
       });
 
       toast({

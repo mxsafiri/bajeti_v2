@@ -28,7 +28,7 @@ export interface User {
  */
 export interface Budget {
   id: number;
-  user_id: number; // References users.id
+  user_id: string; // References users.id
   month: number;
   year: number;
   created_at: string | null;
@@ -61,7 +61,7 @@ export interface BudgetCategory {
  */
 export interface Transaction {
   id: number;
-  user_id: number;
+  user_id: string;
   account_id: number | null; // Reference to financial_accounts table
   category_id: number | null;
   amount: number;
@@ -81,7 +81,7 @@ export interface Transaction {
  */
 export interface FinancialAccount {
   id: number;
-  user_id: number;
+  user_id: string;
   name: string;
   type: string; // e.g., 'bank', 'cash', 'credit', 'investment'
   balance: number;
@@ -99,7 +99,7 @@ export interface FinancialAccount {
 export interface BudgetAllocation {
   id: number;
   transaction_id: number | null; // References transactions.id
-  user_id: number; // References users.id
+  user_id: string; // References users.id
   needs_amount: number;
   wants_amount: number;
   savings_amount: number;

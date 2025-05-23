@@ -27,15 +27,13 @@ import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import type { Database } from '@/lib/database.types';
-import type { CategorySpending, Transaction as DbTransaction } from '@/types/database';
+import type { CategorySpending, Transaction } from '@/types/database';
 
 // Define types for our hooks
 type BudgetData = { total: number; id: number };
 type TransactionsData = Transaction[];
 // Removed local alias type CategorySpendingData = CategorySpending[];
 // We will rely on the imported CategorySpending type directly.
-
-type Transaction = Database['public']['Tables']['transactions']['Row'];
 
 type TimeframeType = "week" | "month" | "year";
 
@@ -375,7 +373,7 @@ export default function SummaryPage() {
               // Filter transactions for the current category
               // Ensure `transactions` is an array of Transaction objects
               const categoryTransactions = (transactions || []).filter(
-                (t: DbTransaction) => t.category_id === numericCategoryId
+                (t: Transaction) => t.category_id === numericCategoryId
               );
               const transaction_count = categoryTransactions.length;
 
