@@ -54,11 +54,18 @@ function useFetchData<T>(
       setIsLoading(true);
       setError(null);
       
-      const result = await fetchFn();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Data fetching timed out after 15 seconds')), 15000)
+      );
+
+      // Race the actual fetch function against the timeout
+      const result = await Promise.race([fetchFn(), timeoutPromise]);
       
       // Only update state if the component is still mounted
       if (isMounted) {
-        setData(result);
+        // The result type from Promise.race will be T if fetchFn wins, or void/never if timeoutPromise wins (as it rejects)
+        // The catch block will handle the timeout error. If fetchFn wins, result is T.
+        setData(result as T);
       }
     } catch (err) {
       if (isMounted) {
