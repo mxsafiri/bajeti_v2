@@ -6,9 +6,62 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type Database = {
+export interface Database {
   public: {
     Tables: {
+      users: {
+        Row: {
+          id: string
+          auth_id: string | null
+          username: string | null
+          email: string | null
+          full_name: string | null
+          avatar_url: string | null
+          phone: string | null
+          language: string | null
+          currency: string | null
+          email_notifications: boolean | null
+          push_notifications: boolean | null
+          sms_notifications: boolean | null
+          theme: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          auth_id?: string | null
+          username?: string | null
+          email?: string | null
+          full_name?: string | null
+          avatar_url?: string | null
+          phone?: string | null
+          language?: string | null
+          currency?: string | null
+          email_notifications?: boolean | null
+          push_notifications?: boolean | null
+          sms_notifications?: boolean | null
+          theme?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          auth_id?: string | null
+          username?: string | null
+          email?: string | null
+          full_name?: string | null
+          avatar_url?: string | null
+          phone?: string | null
+          language?: string | null
+          currency?: string | null
+          email_notifications?: boolean | null
+          push_notifications?: boolean | null
+          sms_notifications?: boolean | null
+          theme?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+      }
       budget_categories: {
         Row: {
           amount: number
@@ -185,53 +238,12 @@ export type Database = {
           }
         ]
       }
-      users: {
-        Row: {
-          auth_id: string
-          avatar_url: string | null
-          created_at: string
-          email: string
-          full_name: string | null
-          id: number
-          updated_at: string | null
-        }
-        Insert: {
-          auth_id: string
-          avatar_url?: string | null
-          created_at?: string
-          email: string
-          full_name?: string | null
-          id?: number
-          updated_at?: string | null
-        }
-        Update: {
-          auth_id?: string
-          avatar_url?: string | null
-          created_at?: string
-          email?: string
-          full_name?: string | null
-          id?: number
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      get_category_spending: {
-        Args: {
-          user_id: number;
-        };
-        Returns: Array<{
-          category_id: number;
-          category_name: string;
-          total_spent: number;
-          budget_amount: number | null;
-          percentage_used: number | null;
-        }>;
-      };
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never

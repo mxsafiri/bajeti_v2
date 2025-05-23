@@ -30,26 +30,26 @@ export default function SettingsPage() {
   const { data: currentUser, isLoading, error } = useCurrentUser();
   
   interface SettingsFormData extends Partial<UserType> {
-    phone?: string;
-    language?: string;
-    currency?: string;
-    email_notifications?: boolean;
-    push_notifications?: boolean;
-    sms_notifications?: boolean;
+    phone?: string | null; // Match UserType
+    language?: string | null; // Match UserType
+    currency?: string | null; // Match UserType
+    email_notifications?: boolean | null; // Match UserType
+    push_notifications?: boolean | null; // Match UserType
+    sms_notifications?: boolean | null; // Match UserType
+    theme?: 'light' | 'dark' | 'system' | null; // Added
   }
 
   const [formData, setFormData] = useState<SettingsFormData>({
     full_name: '',
     email: '',
     avatar_url: '',
-    // Currency is hardcoded to TZS
-    currency: 'TZS',
-    // Set default values for fields not in database
     phone: '',
     language: 'English',
+    currency: 'TZS', // Default, will be overridden by currentUser if set
     email_notifications: true,
     push_notifications: true,
-    sms_notifications: false
+    sms_notifications: false,
+    theme: 'system' // Default theme
   });
   
   const [isUpdating, setIsUpdating] = useState(false);
@@ -58,16 +58,19 @@ export default function SettingsPage() {
   useEffect(() => {
     if (currentUser) {
       setFormData(prev => ({
-        ...prev,
-        full_name: currentUser.full_name || '',
-        email: currentUser.email || '',
-        avatar_url: currentUser.avatar_url || '',
-        // Keep the hardcoded currency
-        phone: prev.phone,
-        language: prev.language,
-        email_notifications: prev.email_notifications,
-        push_notifications: prev.push_notifications,
-        sms_notifications: prev.sms_notifications
+        ...prev, // Keep any previous form state (e.g., if user started typing before load)
+        full_name: currentUser.full_name || prev.full_name || '',
+        email: currentUser.email || prev.email || '',
+        avatar_url: currentUser.avatar_url || prev.avatar_url || '',
+        phone: currentUser.phone || prev.phone || '',
+        language: currentUser.language || prev.language || 'English',
+        currency: currentUser.currency || prev.currency || 'TZS', // Currency can now come from DB
+        email_notifications: currentUser.email_notifications !== undefined && currentUser.email_notifications !== null ? currentUser.email_notifications : prev.email_notifications,
+        push_notifications: currentUser.push_notifications !== undefined && currentUser.push_notifications !== null ? currentUser.push_notifications : prev.push_notifications,
+        sms_notifications: currentUser.sms_notifications !== undefined && currentUser.sms_notifications !== null ? currentUser.sms_notifications : prev.sms_notifications,
+        theme: (currentUser.theme === 'light' || currentUser.theme === 'dark' || currentUser.theme === 'system')
+               ? currentUser.theme
+               : (prev.theme === 'light' || prev.theme === 'dark' || prev.theme === 'system' ? prev.theme : 'system'),
       }));
     }
   }, [currentUser]);
@@ -97,8 +100,9 @@ export default function SettingsPage() {
         .from('users')
         .update({
           full_name: formData.full_name,
-          avatar_url: formData.avatar_url
-          // Currency is hardcoded and not updated
+          avatar_url: formData.avatar_url,
+          phone: formData.phone, // Add phone to update
+          // updated_at will be handled by Supabase or a trigger
         })
         .eq('id', currentUser.id);
 
@@ -119,7 +123,123 @@ export default function SettingsPage() {
       setIsUpdating(false);
     }
   };
+
+  const handleSaveNotificationPreferences = async () => {
+    if (!currentUser) return;
+    
+    setIsUpdating(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          email_notifications: formData.email_notifications,
+          push_notifications: formData.push_notifications,
+          sms_notifications: formData.sms_notifications,
+        })
+        .eq('id', currentUser.id);
+
+      if (error) throw error;
+      
+      toast({
+        title: "Notification preferences updated",
+        description: "Your notification settings have been saved.",
+      });
+    } catch (error) {
+      console.error('Error updating notification preferences:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update notification preferences.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSaveRegionalPreferences = async () => {
+    if (!currentUser) return;
+    
+    setIsUpdating(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          language: formData.language,
+          // Currency is still TZS only for now, not saved from form
+        })
+        .eq('id', currentUser.id);
+
+      if (error) throw error;
+      
+      toast({
+        title: "Regional preferences updated",
+        description: "Your language settings have been saved.",
+      });
+    } catch (error) {
+      console.error('Error updating regional preferences:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update regional preferences.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
   
+  const handleThemeChange = (themeValue: 'light' | 'dark' | 'system') => {
+    setFormData(prev => ({ ...prev, theme: themeValue }));
+    // Add logic to immediately apply theme if desired, or wait for "Apply Theme" button
+    // For now, just updates formData
+  };
+
+  const handleApplyTheme = async () => {
+    if (!currentUser) return;
+    
+    setIsUpdating(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          theme: formData.theme,
+        })
+        .eq('id', currentUser.id);
+
+      if (error) throw error;
+      
+      // Add actual theme application logic here (e.g., update body class, use context)
+      // This might involve a separate hook or utility function.
+      // For now, we'll just toast.
+      if (formData.theme) {
+        document.documentElement.classList.remove('light', 'dark');
+        if (formData.theme === 'light' || formData.theme === 'dark') {
+          document.documentElement.classList.add(formData.theme);
+        } else { // system
+          // You might need a more sophisticated way to detect system preference
+          if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.add('light');
+          }
+        }
+      }
+      
+      toast({
+        title: "Theme applied",
+        description: `Switched to ${formData.theme} theme.`,
+      });
+    } catch (error) {
+      console.error('Error applying theme:', error);
+      toast({
+        title: "Error",
+        description: "Failed to apply theme.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -196,27 +316,27 @@ export default function SettingsPage() {
                       <div className="space-y-2">
                         <Label htmlFor="full_name">Full Name</Label>
                         <Input 
-                          id="full_name" 
-                          value={formData.full_name} 
-                          onChange={handleInputChange} 
+                          id="full_name"
+                          value={formData.full_name ?? ''}
+                          onChange={handleInputChange}
                         />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="email">Email Address</Label>
                         <Input 
-                          id="email" 
-                          type="email" 
-                          value={formData.email} 
-                          disabled 
+                          id="email"
+                          type="email"
+                          value={formData.email ?? ''}
+                          disabled
                           className="bg-gray-50"
                         />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="phone">Phone Number</Label>
                         <Input 
-                          id="phone" 
-                          value={formData.phone || ''} 
-                          onChange={handleInputChange} 
+                          id="phone"
+                          value={formData.phone ?? ''}
+                          onChange={handleInputChange}
                         />
                       </div>
                     </div>
@@ -308,13 +428,13 @@ export default function SettingsPage() {
                     <div className="flex items-center space-x-2">
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input 
-                          type="checkbox" 
-                          className="sr-only peer" 
-                          checked={formData.email_notifications}
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={formData.email_notifications ?? false}
                           onChange={() => {
                             setFormData(prev => ({
                               ...prev,
-                              email_notifications: !prev.email_notifications
+                              email_notifications: !(prev.email_notifications ?? false)
                             }));
                           }}
                         />
@@ -334,13 +454,13 @@ export default function SettingsPage() {
                     <div className="flex items-center space-x-2">
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input 
-                          type="checkbox" 
-                          className="sr-only peer" 
-                          checked={formData.push_notifications}
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={formData.push_notifications ?? false}
                           onChange={() => {
                             setFormData(prev => ({
                               ...prev,
-                              push_notifications: !prev.push_notifications
+                              push_notifications: !(prev.push_notifications ?? false)
                             }));
                           }}
                         />
@@ -360,13 +480,13 @@ export default function SettingsPage() {
                     <div className="flex items-center space-x-2">
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input 
-                          type="checkbox" 
-                          className="sr-only peer" 
-                          checked={formData.sms_notifications}
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={formData.sms_notifications ?? false}
                           onChange={() => {
                             setFormData(prev => ({
                               ...prev,
-                              sms_notifications: !prev.sms_notifications
+                              sms_notifications: !(prev.sms_notifications ?? false)
                             }));
                           }}
                         />
@@ -377,7 +497,7 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
               <CardFooter>
-                <Button onClick={handleSaveProfile} disabled={isUpdating}>
+                <Button onClick={handleSaveNotificationPreferences} disabled={isUpdating}>
                   {isUpdating ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -509,9 +629,9 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     <Label htmlFor="language">Language</Label>
                     <select 
-                      id="language" 
+                      id="language"
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      value={formData.language}
+                      value={formData.language ?? 'English'}
                       onChange={handleSelectChange}
                     >
                       <option value="English">English</option>
@@ -530,7 +650,7 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
               <CardFooter>
-                <Button onClick={handleSaveProfile} disabled={isUpdating}>
+                <Button onClick={handleSaveRegionalPreferences} disabled={isUpdating}>
                   {isUpdating ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -554,38 +674,52 @@ export default function SettingsPage() {
                 <div className="flex items-center space-x-2">
                   <input 
                     type="radio" 
-                    id="light" 
-                    name="theme" 
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500" 
-                    checked 
-                    onChange={() => {}}
+                    id="light"
+                    name="theme"
+                    value="light"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    checked={formData.theme === 'light'}
+                    onChange={() => handleThemeChange('light')}
                   />
                   <Label htmlFor="light">Light Theme</Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <input 
-                    type="radio" 
-                    id="dark" 
-                    name="theme" 
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500" 
-                    onChange={() => {}}
+                  <input
+                    type="radio"
+                    id="dark"
+                    name="theme"
+                    value="dark"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    checked={formData.theme === 'dark'}
+                    onChange={() => handleThemeChange('dark')}
                   />
                   <Label htmlFor="dark">Dark Theme</Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <input 
-                    type="radio" 
-                    id="system" 
-                    name="theme" 
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500" 
-                    onChange={() => {}}
+                  <input
+                    type="radio"
+                    id="system"
+                    name="theme"
+                    value="system"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    checked={formData.theme === 'system'}
+                    onChange={() => handleThemeChange('system')}
                   />
                   <Label htmlFor="system">System Theme</Label>
                 </div>
               </div>
             </CardContent>
             <CardFooter>
-              <Button>Apply Theme</Button>
+              <Button onClick={handleApplyTheme} disabled={isUpdating}>
+                {isUpdating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Applying...
+                  </>
+                ) : (
+                  'Apply Theme'
+                )}
+              </Button>
             </CardFooter>
           </Card>
         </TabsContent>

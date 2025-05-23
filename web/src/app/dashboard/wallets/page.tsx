@@ -1,137 +1,134 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  PlusCircle, 
-  Wallet, 
-  CreditCard, 
-  Landmark, 
+import {
+  PlusCircle,
+  Wallet as WalletIcon, // Renamed to avoid conflict with type
+  CreditCard,
+  Landmark,
   Banknote,
   ArrowUp,
   ArrowDown,
-  MoreHorizontal
+  MoreHorizontal,
+  Loader2, // For loading state
+  AlertTriangle // For error state
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { useFinancialAccounts, useTransactionsForAccount } from '@/hooks/use-supabase-data';
+import type { FinancialAccount } from '@/types/database';
+import type { Transaction as DbTransaction } from '@/types/database'; // Renamed to avoid conflict
+import { Skeleton } from '@/components/ui/skeleton';
 
-// Define wallet type interfaces
-interface BaseWallet {
-  id: number;
-  name: string;
-  balance: number;
-  currency: string;
+
+// Enhanced Wallet type for UI, extending FinancialAccount
+interface UiWallet extends FinancialAccount {
   color: string;
   icon: React.ReactNode;
-  transactions: Transaction[];
+  // Transactions will be fetched separately
+  // limit?: number; // Assuming 'loan' type might have a limit, not in DB schema yet
 }
 
-interface BankWallet extends BaseWallet {
-  type: 'bank';
-}
+// Type guard for loan-like accounts (example, adjust if 'limit' is added to DB)
+// function isLoanWallet(wallet: UiWallet): wallet is UiWallet & { limit: number } {
+//   return wallet.type.toLowerCase() === 'loan' && typeof (wallet as any).limit === 'number';
+// }
 
-interface CashWallet extends BaseWallet {
-  type: 'cash';
-}
+// Helper to get display properties for a wallet
+const getWalletDisplayProps = (accountType: string): { icon: React.ReactNode; color: string } => {
+  const typeLower = accountType.toLowerCase();
+  if (typeLower.includes('bank') || typeLower.includes('savings')) {
+    return { icon: <Landmark className="h-5 w-5 text-blue-500" />, color: 'bg-blue-500' };
+  }
+  if (typeLower.includes('cash')) {
+    return { icon: <Banknote className="h-5 w-5 text-green-500" />, color: 'bg-green-500' };
+  }
+  if (typeLower.includes('loan') || typeLower.includes('credit')) {
+    return { icon: <CreditCard className="h-5 w-5 text-purple-500" />, color: 'bg-purple-500' };
+  }
+  return { icon: <WalletIcon className="h-5 w-5 text-gray-500" />, color: 'bg-gray-500' }; // Default
+};
 
-interface LoanWallet extends BaseWallet {
-  type: 'loan';
-  limit: number;
-}
-
-type Wallet = BankWallet | CashWallet | LoanWallet;
-
-// Type guard to check if a wallet is a loan wallet
-function isLoanWallet(wallet: Wallet): wallet is LoanWallet {
-  return wallet.type === 'loan';
-}
-
-interface Transaction {
-  id: number;
-  type: 'income' | 'expense';
-  amount: number;
-  description: string;
-  date: string;
-}
-
-// Mock data for demonstration
-const mockWallets: Wallet[] = [
-  { 
-    id: 1, 
-    name: 'Main Savings', 
-    type: 'bank',
-    balance: 12500000,
-    currency: 'IDR',
-    color: 'bg-blue-500',
-    icon: <Landmark className="h-5 w-5 text-blue-500" />,
-    transactions: [
-      { id: 1, type: 'income', amount: 5000000, description: 'Salary', date: '2023-05-01' },
-      { id: 2, type: 'expense', amount: 1500000, description: 'Rent', date: '2023-05-03' },
-      { id: 3, type: 'expense', amount: 250000, description: 'Groceries', date: '2023-05-05' },
-    ]
-  },
-  { 
-    id: 2, 
-    name: 'Emergency Fund', 
-    type: 'bank',
-    balance: 5000000,
-    currency: 'IDR',
-    color: 'bg-red-500',
-    icon: <Landmark className="h-5 w-5 text-red-500" />,
-    transactions: [
-      { id: 1, type: 'income', amount: 1000000, description: 'Transfer', date: '2023-04-15' },
-      { id: 2, type: 'income', amount: 1000000, description: 'Transfer', date: '2023-03-15' },
-    ]
-  },
-  { 
-    id: 3, 
-    name: 'Mikopo/Loan', 
-    type: 'loan',
-    balance: 3500000,
-    limit: 10000000,
-    currency: 'IDR',
-    color: 'bg-purple-500',
-    icon: <CreditCard className="h-5 w-5 text-purple-500" />,
-    transactions: [
-      { id: 1, type: 'expense', amount: 1200000, description: 'Electronics', date: '2023-05-02' },
-      { id: 2, type: 'expense', amount: 850000, description: 'Dining', date: '2023-05-04' },
-      { id: 3, type: 'expense', amount: 450000, description: 'Clothing', date: '2023-05-06' },
-    ]
-  },
-  { 
-    id: 4, 
-    name: 'Cash Wallet', 
-    type: 'cash',
-    balance: 750000,
-    currency: 'IDR',
-    color: 'bg-green-500',
-    icon: <Banknote className="h-5 w-5 text-green-500" />,
-    transactions: [
-      { id: 1, type: 'expense', amount: 50000, description: 'Snacks', date: '2023-05-01' },
-      { id: 2, type: 'expense', amount: 150000, description: 'Taxi', date: '2023-05-03' },
-      { id: 3, type: 'income', amount: 200000, description: 'Refund', date: '2023-05-04' },
-    ]
-  },
-];
 
 export default function WalletsPage() {
-  const [wallets, setWallets] = useState(mockWallets);
-  const [activeWallet, setActiveWallet] = useState(mockWallets[0]);
+  const {
+    data: financialAccountsData,
+    isLoading: isLoadingAccounts,
+    error: accountsError,
+    refetch: refetchAccounts,
+  } = useFinancialAccounts();
+  
+  const [activeWallet, setActiveWallet] = useState<UiWallet | null>(null);
+
+  const {
+    data: transactionsData,
+    isLoading: isLoadingTransactions,
+    error: transactionsError,
+    refetch: refetchTransactions,
+  } = useTransactionsForAccount(activeWallet?.id ?? null);
+
+  // Transform financialAccountsData to UiWallet[]
+  const wallets: UiWallet[] = useMemo(() => {
+    if (!financialAccountsData) return [];
+    return financialAccountsData.map(acc => ({
+      ...acc,
+      ...getWalletDisplayProps(acc.type),
+    }));
+  }, [financialAccountsData]);
+
+  useEffect(() => {
+    if (wallets.length > 0 && !activeWallet) {
+      setActiveWallet(wallets[0]);
+    }
+  }, [wallets, activeWallet]);
   
   // Format currency
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number, currencyCode: string = 'IDR') => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
-      currency: 'IDR',
+      currency: currencyCode, // Use dynamic currency code
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
   };
   
   // Calculate total balance across all wallets
-  const totalBalance = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+  const totalBalance = useMemo(() => {
+    return wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+  }, [wallets]);
+
+  if (isLoadingAccounts) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-32 mt-4 sm:mt-0" />
+        </div>
+        <Skeleton className="h-24 w-full" /> {/* Total balance card skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-40 w-full" />)}
+        </div>
+        <Skeleton className="h-96 w-full" /> {/* Selected wallet details skeleton */}
+      </div>
+    );
+  }
+
+  if (accountsError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-red-500">
+        <AlertTriangle className="h-12 w-12 mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Error loading accounts</h2>
+        <p className="text-sm mb-4">{accountsError.message}</p>
+        <Button onClick={() => refetchAccounts()}>Try Again</Button>
+      </div>
+    );
+  }
   
   return (
     <div className="space-y-6">
@@ -156,7 +153,7 @@ export default function WalletsPage() {
           <CardTitle className="text-sm font-medium">Total Balance</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(totalBalance)}</div>
+          <div className="text-2xl font-bold">{formatCurrency(totalBalance, wallets[0]?.currency || 'IDR')}</div>
           <p className="text-xs text-gray-500 mt-1">Across {wallets.length} accounts</p>
         </CardContent>
       </Card>
@@ -169,10 +166,10 @@ export default function WalletsPage() {
             whileHover={{ y: -5 }}
             onClick={() => setActiveWallet(wallet)}
           >
-            <Card className={`cursor-pointer ${activeWallet.id === wallet.id ? 'ring-2 ring-blue-500' : ''}`}>
+            <Card className={`cursor-pointer ${activeWallet?.id === wallet.id ? 'ring-2 ring-blue-500' : ''}`}>
               <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <div className={`p-2 rounded-full ${wallet.color.replace('bg-', 'bg-opacity-20')}`}>
+                  <div className={`p-2 rounded-full ${wallet.color.replace('bg-', 'bg-opacity-20 ')}`}>
                     {wallet.icon}
                   </div>
                   <CardTitle className="text-sm font-medium">{wallet.name}</CardTitle>
@@ -180,9 +177,9 @@ export default function WalletsPage() {
                 <MoreHorizontal className="h-4 w-4 text-gray-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-xl font-bold">{formatCurrency(wallet.balance)}</div>
+                <div className="text-xl font-bold">{formatCurrency(wallet.balance, wallet.currency)}</div>
                 
-                {isLoanWallet(wallet) && (
+                {/* {isLoanWallet(wallet) && ( // Loan specific UI, adapt if needed
                   <div className="mt-2">
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span>Loan Limit</span>
@@ -190,10 +187,14 @@ export default function WalletsPage() {
                     </div>
                     <Progress value={Math.round((wallet.balance / wallet.limit) * 100)} />
                   </div>
-                )}
+                )} */}
               </CardContent>
               <CardFooter className="pt-0">
-                <p className="text-xs text-gray-500">{wallet.transactions.length} recent transactions</p>
+                 {/* Transaction count will be dynamic based on fetched transactionsData */}
+                <p className="text-xs text-gray-500">
+                  {isLoadingTransactions && activeWallet?.id === wallet.id ? <Loader2 className="h-3 w-3 animate-spin inline-block mr-1" /> : ''}
+                  {transactionsData && activeWallet?.id === wallet.id ? `${transactionsData.length} recent transactions` : `View transactions`}
+                </p>
               </CardFooter>
             </Card>
           </motion.div>
@@ -201,18 +202,18 @@ export default function WalletsPage() {
       </div>
       
       {/* Selected wallet details */}
+      {activeWallet && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <div className={`p-2 rounded-full ${activeWallet.color.replace('bg-', 'bg-opacity-20')}`}>
+              <div className={`p-2 rounded-full ${activeWallet.color.replace('bg-', 'bg-opacity-20 ')}`}>
                 {activeWallet.icon}
               </div>
               <div>
                 <CardTitle>{activeWallet.name}</CardTitle>
                 <CardDescription>
-                  {activeWallet.type === 'bank' ? 'Bank Account' : 
-                   activeWallet.type === 'loan' ? 'Mikopo/Loan' : 'Cash Wallet'}
+                  {activeWallet.type.charAt(0).toUpperCase() + activeWallet.type.slice(1)} Account
                 </CardDescription>
               </div>
             </div>
@@ -237,33 +238,52 @@ export default function WalletsPage() {
             </TabsList>
             
             <TabsContent value="transactions" className="mt-4">
-              <div className="rounded-md border">
-                <div className="grid grid-cols-4 bg-gray-50 p-4 text-sm font-medium text-gray-500">
-                  <div>Date</div>
-                  <div className="col-span-2">Description</div>
-                  <div className="text-right">Amount</div>
+              {isLoadingTransactions && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+                  <p className="ml-2 text-gray-500">Loading transactions...</p>
                 </div>
-                
-                <div className="divide-y">
-                  {activeWallet.transactions.map((transaction) => (
-                    <div 
-                      key={transaction.id}
-                      className="grid grid-cols-4 p-4 text-sm hover:bg-gray-50"
-                    >
-                      <div className="text-gray-600">{transaction.date}</div>
-                      <div className="col-span-2 font-medium">{transaction.description}</div>
-                      <div className={`text-right font-medium ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                        {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
+              )}
+              {transactionsError && (
+                <div className="py-12 text-center text-red-500">
+                  <AlertTriangle className="mx-auto h-10 w-10 mb-2" />
+                  <p className="font-medium">Error loading transactions</p>
+                  <p className="text-sm mb-3">{transactionsError.message}</p>
+                  <Button onClick={() => refetchTransactions()} size="sm">Try Again</Button>
+                </div>
+              )}
+              {!isLoadingTransactions && !transactionsError && transactionsData && (
+                <div className="rounded-md border">
+                  <div className="grid grid-cols-4 bg-gray-50 p-4 text-sm font-medium text-gray-500">
+                    <div>Date</div>
+                    <div className="col-span-2">Description</div>
+                    <div className="text-right">Amount</div>
+                  </div>
+                  
+                  <div className="divide-y">
+                    {transactionsData.length === 0 && (
+                      <p className="p-4 text-sm text-gray-500 text-center">No transactions found for this account.</p>
+                    )}
+                    {transactionsData.map((transaction: DbTransaction) => (
+                      <div
+                        key={transaction.id}
+                        className="grid grid-cols-4 p-4 text-sm hover:bg-gray-50"
+                      >
+                        <div className="text-gray-600">{new Date(transaction.date).toLocaleDateString()}</div>
+                        <div className="col-span-2 font-medium">{transaction.description || 'N/A'}</div>
+                        <div className={`text-right font-medium ${transaction.is_income ? 'text-green-600' : 'text-red-600'}`}>
+                          {transaction.is_income ? '+' : '-'}{formatCurrency(transaction.amount, activeWallet.currency)}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </TabsContent>
             
             <TabsContent value="analytics" className="mt-4">
               <div className="py-12 text-center">
-                <Wallet className="mx-auto h-12 w-12 text-gray-400" />
+                <WalletIcon className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-lg font-medium">Wallet Analytics</h3>
                 <p className="mt-1 text-sm text-gray-500">
                   Visualize your spending patterns and income sources.
@@ -282,6 +302,31 @@ export default function WalletsPage() {
           </Tabs>
         </CardContent>
       </Card>
+      )}
+      {!activeWallet && !isLoadingAccounts && wallets.length > 0 && (
+         <Card className="py-12 text-center">
+            <CardContent>
+              <WalletIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <p className="text-lg font-medium text-gray-700">Select a wallet</p>
+              <p className="text-sm text-gray-500">Click on a wallet card above to see its details and transactions.</p>
+            </CardContent>
+          </Card>
+      )}
+       {!isLoadingAccounts && wallets.length === 0 && (
+        <Card className="py-12 text-center">
+          <CardContent>
+            <WalletIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <p className="text-lg font-medium text-gray-700">No Wallets Found</p>
+            <p className="text-sm text-gray-500 mb-4">
+              It looks like you haven't added any financial accounts yet.
+            </p>
+            <Button>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Add Your First Wallet
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       
       {/* Floating action button */}
       <div className="fixed bottom-6 right-6 z-10">

@@ -6,12 +6,19 @@
  * This interface represents our custom users table that extends auth data
  */
 export interface User {
-  id: number;  // Matches database schema
-  auth_id: string;  // Matches Supabase Auth
-  email: string;
+  id: string; // UUID type from database
+  auth_id: string | null; // Made nullable to match DB
+  username: string | null; // Added to match DB
+  email: string | null; // Made nullable to match DB
   full_name: string | null;
   avatar_url: string | null;
-  currency?: string; // Made optional as we're hardcoding to TZS for now
+  phone: string | null;
+  language: string | null; // Default: 'English'
+  currency: string | null; // Default: 'TZS'
+  email_notifications: boolean | null; // Default: true
+  push_notifications: boolean | null; // Default: true
+  sms_notifications: boolean | null; // Default: false
+  theme: string | null; // Default: 'system'
   created_at: string | null;
   updated_at: string | null;
 }

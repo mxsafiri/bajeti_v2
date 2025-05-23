@@ -1,66 +1,167 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { format, parseISO } from 'date-fns';
-import type { Transaction as DbTransaction, Category } from '@/types/database';
-import { 
-  PlusCircle, 
-  Filter, 
-  Calendar, 
-  ArrowUpDown,
-  Download,
-  Loader2
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useTransactions, useCategories, useCurrentUser } from '@/hooks/use-supabase-data';
-import type { Database } from '@/lib/database.types';
+import { useState, useMemo, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { PlusCircle, Download, Calendar as CalendarIconLucide, Filter, ArrowUpDown, Loader2 } from "lucide-react";
+import { format, parseISO, isWithinInterval, startOfMonth, endOfMonth } from "date-fns";
+import { useToast } from "@/components/ui/use-toast";
+import { useTransactions, useCategories, useCurrentUser, createTransaction } from "@/hooks/use-supabase-data";
+import { ExpenseForm } from "./components/expense-form";
+import { ExpenseList } from "./components/expense-list";
+import { ExpenseFilters } from "./components/expense-filters";
+import type { DateRange as DayPickerDateRange } from "react-day-picker";
+import type { Database } from "@/lib/database.types";
 
-type ExpenseWithCategory = {
-  id: string;
-  date: Date;
-  category: string;
-  description: string;
-  amount: number;
-  paymentMethod: string;
-};
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+
+type DbTransaction = Database["public"]["Tables"]["transactions"]["Row"];
+type DbCategory = Database["public"]["Tables"]["categories"]["Row"];
+type NewTransaction = Omit<DbTransaction, "id" | "created_at" | "updated_at"> & { account_id: number | null };
+type SortField = "date" | "amount" | "category";
+type SortOrder = "asc" | "desc";
+
+// Define ExpenseWithCategory if it's used internally and not imported
+interface ExpenseWithCategory extends DbTransaction {
+  category: string; // Assuming category name is added
+  paymentMethod: string; // Assuming this is derived
+}
 
 export default function ExpensesPage() {
-  const { data: transactions = [], isLoading: isLoadingTransactions } = useTransactions(100) as { data: DbTransaction[]; isLoading: boolean; };
-  const { data: categories = [], isLoading: isLoadingCategories } = useCategories() as { data: Category[]; isLoading: boolean; };
-  const [expenses, setExpenses] = useState<ExpenseWithCategory[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // Process transactions when data is loaded
-  useEffect(() => {
-    if (transactions && categories) {
-      // Convert transactions to expenses format
-      const processedExpenses = transactions.map((transaction) => {
-        // Find category name from category_id
-        const category = categories.find(cat => cat.id === transaction.category_id);
-        
-        return {
-          id: transaction.id.toString(),
-          date: new Date(transaction.date),
-          category: category?.name || 'Uncategorized',
-          description: transaction.description || '',
-          amount: transaction.amount,
-          paymentMethod: transaction.is_income ? 'Income' : 'Expense' // We could enhance this with actual payment methods
-        } as ExpenseWithCategory;
-      });
-      
-      setExpenses(processedExpenses);
-      setIsLoading(false);
-    }
-  }, [transactions, categories]);
-  
-  const { data: user } = useCurrentUser();
+  const { data: transactionsData, isLoading: isLoadingTransactions, error: transactionsError } = useTransactions();
+  const { data: categoriesData, isLoading: isLoadingCategories, error: categoriesError } = useCategories();
+  const { data: userData } = useCurrentUser();
+  const { toast } = useToast();
 
+  // State management
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all"); // category id or 'all'
+  const [selectedDateRange, setSelectedDateRange] = useState<DayPickerDateRange | undefined>();
+  const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [newExpenseState, setNewExpenseState] = useState<Omit<NewTransaction, 'user_id' | 'account_id'>>({
+    amount: 0,
+    category_id: null,
+    description: '',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    is_income: false,
+    receipt_url: null,
+    type: 'expense' as const
+  });
+
+
+  // Use a more robust way to handle potentially null/undefined data from hooks
+  const transactions: DbTransaction[] = transactionsData || [];
+  const categories: DbCategory[] = categoriesData || [];
+  const user = userData;
+
+
+  // Handle expense creation
+  const handleCreateExpense = async (expenseData: NewTransaction) => {
+    if (!user?.id) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to create an expense",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Ensure account_id is present, even if null
+      const payload: NewTransaction = {
+        ...expenseData,
+        user_id: user.id,
+        account_id: expenseData.account_id !== undefined ? expenseData.account_id : null,
+      };
+      await createTransaction(payload);
+
+      setIsAddExpenseOpen(false);
+      toast({
+        title: "Success",
+        description: "Expense added successfully"
+      });
+      // Reset form if needed (or let ExpenseForm handle its own state reset)
+      setNewExpenseState({
+        amount: 0,
+        category_id: null,
+        description: '',
+        date: format(new Date(), 'yyyy-MM-dd'),
+        is_income: false,
+        receipt_url: null,
+        type: 'expense' as const
+      });
+    } catch (error) {
+      console.error("Failed to add expense:", error);
+      toast({
+        title: "Error",
+        description: (error as Error)?.message || "Failed to add expense",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  const expensesForList = useMemo(() => {
+    return transactions
+      .filter(t => !t.is_income)
+      .map(t => {
+        const category = categories.find(c => c.id === t.category_id);
+        return {
+          ...t,
+          category_name: category?.name || 'Uncategorized',
+        };
+      });
+  }, [transactions, categories]);
+
+  const filteredAndSortedExpenses = useMemo(() => {
+    let processedExpenses = expensesForList.filter(expense => {
+      const expenseDate = parseISO(expense.date);
+      const dateMatches = selectedDateRange?.from && selectedDateRange?.to ?
+        isWithinInterval(expenseDate, { start: selectedDateRange.from, end: selectedDateRange.to }) : true;
+
+      const categoryMatches = selectedCategory === "all" || (expense.category_id !== null && expense.category_id?.toString() === selectedCategory);
+      
+      const searchMatches = !searchQuery ||
+        expense.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        expense.category_name?.toLowerCase().includes(searchQuery.toLowerCase());
+
+      return dateMatches && categoryMatches && searchMatches;
+    });
+
+    return processedExpenses.sort((a, b) => {
+      const multiplier = sortOrder === "asc" ? 1 : -1;
+      switch (sortField) {
+        case "date":
+          return multiplier * (parseISO(a.date).getTime() - parseISO(b.date).getTime());
+        case "amount":
+          return multiplier * (a.amount - b.amount);
+        case "category":
+          return multiplier * (a.category_name?.localeCompare(b.category_name || '') || 0);
+        default:
+          return 0;
+      }
+    });
+  }, [expensesForList, selectedDateRange, selectedCategory, searchQuery, sortField, sortOrder]);
+
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortOrder("desc");
+    }
+  };
+  
   // Format currency - hardcoded to TZS for now
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-TZ', {
@@ -70,358 +171,87 @@ export default function ExpensesPage() {
       maximumFractionDigits: 0
     }).format(amount);
   };
+
+  if (isLoadingTransactions || isLoadingCategories) {
+    return (
+      <div className="container mx-auto py-6 space-y-6 flex justify-center items-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  if (transactionsError || categoriesError) {
+    return <div className="container mx-auto py-6">Error loading data. Please try again.</div>;
+  }
   
-  // Filter expenses based on search query
-  const filteredExpenses = expenses.filter(expense => 
-    expense.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    expense.category.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  
+  if (!user) {
+     return (
+      <div className="container mx-auto py-6 text-center">
+        <p>Please log in to view expenses.</p>
+        {/* Optionally, add a login button/link here */}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Expense History</h1>
-          <p className="text-sm text-gray-500">View and manage all your expenses</p>
-        </div>
-        
-        <div className="flex items-center space-x-2 mt-4 sm:mt-0">
-          <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-          <Button size="sm">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Add Expense
-          </Button>
-        </div>
-      </div>
-      
-      {/* Filters and search */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Input
-            placeholder="Search expenses..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-          </div>
-        </div>
-        
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Calendar className="mr-2 h-4 w-4" />
-            Date Range
-          </Button>
-          <Button variant="outline" size="sm">
-            <Filter className="mr-2 h-4 w-4" />
-            Filter
-          </Button>
-          <Button variant="outline" size="sm">
-            <ArrowUpDown className="mr-2 h-4 w-4" />
-            Sort
-          </Button>
-        </div>
-      </div>
-      
-      {/* Expense categories tabs */}
-      <Tabs defaultValue="all" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="income">Income</TabsTrigger>
-          <TabsTrigger value="expense">Expense</TabsTrigger>
-          <TabsTrigger value="recent">Recent</TabsTrigger>
-          <TabsTrigger value="highest">Highest</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="all" className="mt-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle>All Expenses</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border">
-                <div className="grid grid-cols-6 bg-gray-50 p-4 text-sm font-medium text-gray-500">
-                  <div>Date</div>
-                  <div>Category</div>
-                  <div className="col-span-2">Description</div>
-                  <div>Payment Method</div>
-                  <div className="text-right">Amount</div>
-                </div>
-                
-                {isLoading ? (
-                  // Loading skeleton
-                  <div className="divide-y">
-                    {[...Array(5)].map((_, index) => (
-                      <div key={index} className="grid grid-cols-6 p-4 text-sm">
-                        <Skeleton className="h-5 w-20" />
-                        <Skeleton className="h-5 w-24" />
-                        <div className="col-span-2"><Skeleton className="h-5 w-full" /></div>
-                        <Skeleton className="h-5 w-20" />
-                        <div className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {filteredExpenses.map((expense) => (
-                      <motion.div 
-                        key={expense.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="grid grid-cols-6 p-4 text-sm hover:bg-gray-50 cursor-pointer"
-                      >
-                        <div className="text-gray-600">{format(expense.date, 'dd MMM yyyy')}</div>
-                        <div className="font-medium">{expense.category}</div>
-                        <div className="col-span-2">{expense.description}</div>
-                        <div className="text-gray-600">{expense.paymentMethod}</div>
-                        <div className={`text-right font-medium ${expense.paymentMethod === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
-                          {expense.paymentMethod === 'Income' ? '+' : '-'}{formatCurrency(expense.amount)}
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              
-              {!isLoading && filteredExpenses.length === 0 && (
-                <div className="py-12 text-center">
-                  <p className="text-gray-500">No expenses found matching your search.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        {/* Other tabs would have similar content */}
-        <TabsContent value="income" className="mt-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle>Income Transactions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="py-12 flex justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <div className="grid grid-cols-6 bg-gray-50 p-4 text-sm font-medium text-gray-500">
-                    <div>Date</div>
-                    <div>Category</div>
-                    <div className="col-span-2">Description</div>
-                    <div>Type</div>
-                    <div className="text-right">Amount</div>
-                  </div>
-                  
-                  <div className="divide-y">
-                    {filteredExpenses
-                      .filter(expense => expense.paymentMethod === 'Income')
-                      .map((expense) => (
-                        <motion.div 
-                          key={expense.id}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="grid grid-cols-6 p-4 text-sm hover:bg-gray-50 cursor-pointer"
-                        >
-                          <div className="text-gray-600">{format(expense.date, 'dd MMM yyyy')}</div>
-                          <div className="font-medium">{expense.category}</div>
-                          <div className="col-span-2">{expense.description}</div>
-                          <div className="text-gray-600">{expense.paymentMethod}</div>
-                          <div className="text-right font-medium text-green-600">
-                            +{formatCurrency(expense.amount)}
-                          </div>
-                        </motion.div>
-                      ))}
-                  </div>
-                  
-                  {!isLoading && filteredExpenses.filter(expense => expense.paymentMethod === 'Income').length === 0 && (
-                    <div className="py-12 text-center">
-                      <p className="text-gray-500">No income transactions found.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="expense" className="mt-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle>Expense Transactions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="py-12 flex justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <div className="grid grid-cols-6 bg-gray-50 p-4 text-sm font-medium text-gray-500">
-                    <div>Date</div>
-                    <div>Category</div>
-                    <div className="col-span-2">Description</div>
-                    <div>Type</div>
-                    <div className="text-right">Amount</div>
-                  </div>
-                  
-                  <div className="divide-y">
-                    {filteredExpenses
-                      .filter(expense => expense.paymentMethod === 'Expense')
-                      .map((expense) => (
-                        <motion.div 
-                          key={expense.id}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="grid grid-cols-6 p-4 text-sm hover:bg-gray-50 cursor-pointer"
-                        >
-                          <div className="text-gray-600">{format(expense.date, 'dd MMM yyyy')}</div>
-                          <div className="font-medium">{expense.category}</div>
-                          <div className="col-span-2">{expense.description}</div>
-                          <div className="text-gray-600">{expense.paymentMethod}</div>
-                          <div className="text-right font-medium text-red-600">
-                            -{formatCurrency(expense.amount)}
-                          </div>
-                        </motion.div>
-                      ))}
-                  </div>
-                  
-                  {!isLoading && filteredExpenses.filter(expense => expense.paymentMethod === 'Expense').length === 0 && (
-                    <div className="py-12 text-center">
-                      <p className="text-gray-500">No expense transactions found.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="recent" className="mt-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle>Recent Transactions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="py-12 flex justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <div className="grid grid-cols-6 bg-gray-50 p-4 text-sm font-medium text-gray-500">
-                    <div>Date</div>
-                    <div>Category</div>
-                    <div className="col-span-2">Description</div>
-                    <div>Type</div>
-                    <div className="text-right">Amount</div>
-                  </div>
-                  
-                  <div className="divide-y">
-                    {filteredExpenses
-                      .sort((a, b) => b.date.getTime() - a.date.getTime())
-                      .slice(0, 5)
-                      .map((expense) => (
-                        <motion.div 
-                          key={expense.id}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="grid grid-cols-6 p-4 text-sm hover:bg-gray-50 cursor-pointer"
-                        >
-                          <div className="text-gray-600">{format(expense.date, 'dd MMM yyyy')}</div>
-                          <div className="font-medium">{expense.category}</div>
-                          <div className="col-span-2">{expense.description}</div>
-                          <div className="text-gray-600">{expense.paymentMethod}</div>
-                          <div className={`text-right font-medium ${expense.paymentMethod === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
-                            {expense.paymentMethod === 'Income' ? '+' : '-'}{formatCurrency(expense.amount)}
-                          </div>
-                        </motion.div>
-                      ))}
-                  </div>
-                  
-                  {!isLoading && filteredExpenses.length === 0 && (
-                    <div className="py-12 text-center">
-                      <p className="text-gray-500">No transactions found.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="highest" className="mt-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle>Highest Transactions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="py-12 flex justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <div className="grid grid-cols-6 bg-gray-50 p-4 text-sm font-medium text-gray-500">
-                    <div>Date</div>
-                    <div>Category</div>
-                    <div className="col-span-2">Description</div>
-                    <div>Type</div>
-                    <div className="text-right">Amount</div>
-                  </div>
-                  
-                  <div className="divide-y">
-                    {filteredExpenses
-                      .sort((a, b) => b.amount - a.amount)
-                      .slice(0, 5)
-                      .map((expense) => (
-                        <motion.div 
-                          key={expense.id}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="grid grid-cols-6 p-4 text-sm hover:bg-gray-50 cursor-pointer"
-                        >
-                          <div className="text-gray-600">{format(expense.date, 'dd MMM yyyy')}</div>
-                          <div className="font-medium">{expense.category}</div>
-                          <div className="col-span-2">{expense.description}</div>
-                          <div className="text-gray-600">{expense.paymentMethod}</div>
-                          <div className={`text-right font-medium ${expense.paymentMethod === 'Income' ? 'text-green-600' : 'text-red-600'}`}>
-                            {expense.paymentMethod === 'Income' ? '+' : '-'}{formatCurrency(expense.amount)}
-                          </div>
-                        </motion.div>
-                      ))}
-                  </div>
-                  
-                  {!isLoading && filteredExpenses.length === 0 && (
-                    <div className="py-12 text-center">
-                      <p className="text-gray-500">No transactions found.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-      
-      {/* Floating action button */}
-      <div className="fixed bottom-6 right-6 z-10">
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Expenses</h1>
         <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          className="bg-blue-600 text-white rounded-full p-4 shadow-lg flex items-center justify-center"
+          onClick={() => setIsAddExpenseOpen(true)}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="bg-blue-600 text-white rounded-full p-3 shadow-lg"
         >
           <PlusCircle className="h-6 w-6" />
         </motion.button>
       </div>
+
+      <ExpenseFilters
+        categories={categories || []}
+        selectedCategory={selectedCategory}
+        onCategoryChange={setSelectedCategory}
+        dateRange={selectedDateRange}
+        onDateRangeChange={setSelectedDateRange}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
+
+      <ExpenseList
+        expenses={filteredAndSortedExpenses}
+        categories={categories || []} // Pass categories for potential display needs in ExpenseList
+        sortField={sortField}
+        sortOrder={sortOrder}
+        onSort={handleSort}
+        formatCurrency={formatCurrency}
+      />
+
+      <AnimatePresence>
+        {isAddExpenseOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+          >
+            <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">Add New Expense</h2>
+                <Button variant="ghost" size="icon" onClick={() => setIsAddExpenseOpen(false)}>
+                  <PlusCircle className="h-5 w-5 rotate-45" /> {/* Using PlusCircle as a close icon */}
+                </Button>
+              </div>
+              <ExpenseForm
+                categories={categories || []}
+                onSubmit={handleCreateExpense}
+                onCancel={() => setIsAddExpenseOpen(false)}
+                userId={user.id} 
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

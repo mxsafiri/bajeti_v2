@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { format, parseISO, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { ArrowRight, XCircle, RefreshCw, TrendingUp, TrendingDown, AlertCircle } from "lucide-react";
@@ -27,11 +27,13 @@ import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import type { Database } from '@/lib/database.types';
+import type { CategorySpending, Transaction as DbTransaction } from '@/types/database';
 
 // Define types for our hooks
 type BudgetData = { total: number; id: number };
 type TransactionsData = Transaction[];
-type CategorySpendingData = CategorySpending[];
+// Removed local alias type CategorySpendingData = CategorySpending[];
+// We will rely on the imported CategorySpending type directly.
 
 type Transaction = Database['public']['Tables']['transactions']['Row'];
 
@@ -58,20 +60,12 @@ interface SummaryData {
     income: number;
     expenses: number;
   }>;
-  topSpendingCategories: SpendingCategory[];
   topCategories: SpendingCategory[];
 }
 
-interface CategorySpending {
-  name: string;
-  amount: number;
-  percentage: number;
-  total_spent?: number;
-  category_name?: string;
-  category_id?: number;
-  budget_amount?: number | null;
-  percentage_used?: number | null;
-}
+// Removed conflicting local interface CategorySpending.
+// The imported CategorySpending from '@/types/database' (which includes user_id, etc.)
+// should now be correctly resolved and used.
 
 interface BudgetSummary {
   total: number;
@@ -135,11 +129,6 @@ export default function SummaryPage() {
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Define types for our hooks
-  type BudgetData = { total: number; id: number };
-  type TransactionsData = Transaction[];
-  type CategorySpendingData = CategorySpending[];
-  
   // Fetch user data
   const { data: user, error: userError, isLoading: isUserLoading, refetch: refetchUser } = useCurrentUser();
   
@@ -164,13 +153,6 @@ export default function SummaryPage() {
   const categoryError = categorySpendingResult?.error;
   const refetchCategorySpending = categorySpendingResult?.refetch;
   
-  // Fetch budget summary with proper typing
-  const budgetSummaryResult = useBudgetSummary(budget?.id);
-  const budgetSummaryData = budgetSummaryResult?.data || null;
-  const isSummaryLoading = budgetSummaryResult?.isLoading || false;
-  const summaryError = budgetSummaryResult?.error;
-  const refetchSummary = budgetSummaryResult?.refetch;
-
   const containerVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: {
@@ -194,10 +176,6 @@ export default function SummaryPage() {
     }
   };
 
-  // Fetch budget summary if budget exists
-  const { data: budgetSummary, error: budgetSummaryError, isLoading: isBudgetSummaryLoading } = 
-    useBudgetSummary(budget?.id || 0);
-
   // Handle loading state
   const isLoadingState = !user || !transactions || !budget;
   
@@ -214,7 +192,6 @@ export default function SummaryPage() {
         refetchTransactions?.() || Promise.resolve(),
         refetchBudget?.() || Promise.resolve(),
         refetchCategorySpending?.() || Promise.resolve(),
-        refetchSummary?.() || Promise.resolve()
       ]);
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -270,7 +247,7 @@ export default function SummaryPage() {
   };
 
   // Calculate summary data from transactions and budget
-  const calculateSummaryData = (transactions: Transaction[], budget: any, categorySpending: CategorySpending[]): SummaryData => {
+  const calculateSummaryData = useCallback((transactions: Transaction[], budget: BudgetData | null, categorySpending: CategorySpending[]): SummaryData => {
     // Calculate total income and expenses
     const { totalIncome, totalExpenses } = transactions.reduce(
       (acc: { totalIncome: number; totalExpenses: number }, transaction: Transaction) => {
@@ -287,15 +264,29 @@ export default function SummaryPage() {
     const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
 
     // Transform category spending data
-    const transformedCategorySpending = (categorySpending || []).map(cat => ({
-      name: cat.category_name || 'Uncategorized',
-      amount: cat.total_spent || 0,
-      percentage: cat.percentage_used || 0,
-      total_spent: cat.total_spent,
-      category_name: cat.category_name,
-      category_id: cat.category_id,
-      budget_amount: cat.budget_amount
-    }));
+    // Define a type for the intermediate structure produced by this first transformation
+    interface IntermediateCategoryData {
+      name: string; // Corresponds to category_name
+      amount: number; // Corresponds to total_spent
+      percentage: number; // From percentage_used
+      total_spent: number | null | undefined; // Raw total_spent
+      category_name: string | null | undefined; // Raw category_name
+      category_id: number | string | null | undefined; // Raw category_id
+      budget_amount: number | null | undefined; // Raw budget_amount
+    }
+
+    const transformedCategorySpending: IntermediateCategoryData[] =
+      (categorySpending || []).map((cat: any) => { // Assuming 'cat' from hook has these props
+        return {
+          name: cat.category_name || 'Uncategorized',
+          amount: cat.total_spent || 0,
+          percentage: cat.percentage_used || 0, // This property is fine for IntermediateCategoryData
+          total_spent: cat.total_spent,
+          category_name: cat.category_name,
+          category_id: cat.category_id,
+          budget_amount: cat.budget_amount // This property is fine for IntermediateCategoryData
+        };
+      });
 
     const topSpendingCategories = transformedCategorySpending
       .map(category => ({
@@ -336,10 +327,9 @@ export default function SummaryPage() {
         remaining: (budget?.total || 0) - totalExpenses
       },
       monthlyTrends,
-      topSpendingCategories,
       topCategories: topSpendingCategories
     };
-  };
+  }, []);
 
   // Process data when it's available
   useEffect(() => {
@@ -359,15 +349,82 @@ export default function SummaryPage() {
       if (Array.isArray(transactions) && transactions.length > 0 && budget && Array.isArray(categorySpending)) {
         try {
           // Transform category spending data before passing to calculateSummaryData
-          const transformedCategorySpending = (categorySpending || []).map(cat => ({
-            name: cat.category_name || 'Uncategorized',
-            amount: cat.total_spent || 0,
-            percentage: cat.percentage_used || 0,
-            total_spent: cat.total_spent,
-            category_name: cat.category_name,
-            category_id: cat.category_id,
-            budget_amount: cat.budget_amount
-          }));
+          const transformedCategorySpending = (categorySpending || [])
+            // The .map() was broken by the previous incorrect placement of InputCategoryData.
+            // Assuming 'categorySpending' (from the hook) is an array of objects with at least
+            // category_id, category_name, total_spent, budget_amount.
+            // We'll define InputCategoryData at a higher scope if still needed, or infer 'cat'.
+            // For now, let's try to let TypeScript infer 'cat' or use 'any' temporarily
+            // if the hook doesn't provide a strong type for its elements.
+            .map((cat: any) => { // Temporarily using 'any' for 'cat' to fix syntax errors first
+              let numericCategoryId: number;
+              if (typeof cat.category_id === 'number') {
+                numericCategoryId = cat.category_id;
+              } else if (typeof cat.category_id === 'string') {
+                const parsedId = parseInt(cat.category_id, 10);
+                if (isNaN(parsedId)) {
+                  console.warn('Invalid category_id (NaN):', cat.category_id, 'for category:', cat.category_name);
+                  return null;
+                }
+                numericCategoryId = parsedId;
+              } else { // cat.category_id is null or undefined
+                console.warn('Null or undefined category_id for category:', cat.category_name);
+                return null;
+              }
+
+              // Filter transactions for the current category
+              // Ensure `transactions` is an array of Transaction objects
+              const categoryTransactions = (transactions || []).filter(
+                (t: DbTransaction) => t.category_id === numericCategoryId
+              );
+              const transaction_count = categoryTransactions.length;
+
+              let first_transaction_date: string;
+              let last_transaction_date: string;
+
+              if (transaction_count === 0) {
+                // If total_spent is reported but no transactions, it's an inconsistency or just an empty category.
+                // For CategorySpending type, first/last transaction dates are required if there's spending.
+                // We will filter out categories with no transactions to ensure type correctness.
+                if (cat.total_spent && cat.total_spent > 0) {
+                  console.warn(
+                    `Category "${cat.category_name}" (ID: ${numericCategoryId}) has total_spent > 0 but no transactions. Skipping.`
+                  );
+                }
+                return null;
+              } else {
+                // Sort by date to find first and last transaction dates
+                categoryTransactions.sort(
+                  (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                );
+                first_transaction_date = categoryTransactions[0].date;
+                last_transaction_date = categoryTransactions[transaction_count - 1].date;
+              }
+
+              // Get user_id - assuming `user` object is available in the component scope
+              // (e.g., from `useUser()` hook) and has an `id` property.
+              const currentUserId = user?.id;
+              if (!currentUserId) {
+                console.warn('User ID not available. Skipping category spending record for category:', cat.category_name);
+                return null;
+              }
+
+              // Explicitly build the object that should conform to CategorySpending
+              const dataForChart: CategorySpending = {} as CategorySpending; // Start with an empty typed object
+              dataForChart.category_id = numericCategoryId;
+              dataForChart.category_name = cat.category_name || 'Uncategorized';
+              dataForChart.user_id = currentUserId; // This is the problematic line
+              dataForChart.total_spent = cat.total_spent || 0;
+              dataForChart.transaction_count = transaction_count;
+              dataForChart.first_transaction_date = first_transaction_date;
+              dataForChart.last_transaction_date = last_transaction_date;
+              dataForChart.budget = (cat.budget_amount === null || cat.budget_amount === undefined)
+                                      ? undefined
+                                      : cat.budget_amount;
+              
+              return dataForChart;
+            })
+            .filter((item): item is CategorySpending => item !== null);
           
           const summaryResult = calculateSummaryData(transactions, budget, transformedCategorySpending);
           setSummaryData(summaryResult);
@@ -385,19 +442,6 @@ export default function SummaryPage() {
 
     processData();
   }, [transactions, budget, categorySpending, isUserLoading, isLoadingTransactions, isCategoryLoading, isLoadingBudget, userError, transactionsError, budgetError, categoryError, calculateSummaryData]);
-
-  // Handle refresh
-  const handleDataRefresh = async () => {
-    setIsLoading(true);
-    // Refetch data
-    await Promise.all([
-      refetchUser(),
-      refetchTransactions(),
-      refetchBudget(),
-      refetchCategorySpending()
-    ]);
-    setIsLoading(false);
-  };
 
   if (isLoading) {
     return (
@@ -428,7 +472,7 @@ export default function SummaryPage() {
         </div>
         <h2 className="text-xl font-semibold">Failed to Load Data</h2>
         <p className="text-gray-500">{errorMessage}</p>
-        <Button onClick={() => setIsLoading(true)}>Try Again</Button>
+        <Button onClick={handleRefresh}>Try Again</Button>
       </div>
     );
   }
