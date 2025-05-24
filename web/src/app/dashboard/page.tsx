@@ -89,8 +89,13 @@ export default function DashboardPage() {
     account_id: null as number | null
   });
 
-  // Loading state
-  if (userLoading || transactionsLoading || categoriesLoading || spendingLoading || budgetLoading || budgetSummaryLoading) {
+  // Check authentication first
+  if (!userLoading && !user) {
+    redirect('/auth/login');
+  }
+
+  // Show loading state only for initial user load
+  if (userLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-gray-900"></div>
@@ -98,10 +103,8 @@ export default function DashboardPage() {
     );
   }
 
-  // Not authenticated
-  if (!user) {
-    redirect('/auth/login');
-  }
+  // If we have a user but other data is loading, show a loading indicator in the layout
+  const isLoadingData = transactionsLoading || categoriesLoading || spendingLoading || budgetLoading || budgetSummaryLoading;
 
   // Handle transaction creation
   const handleCreateTransaction = async () => {
@@ -141,11 +144,18 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 relative">
+      {isLoadingData && (
+        <div className="absolute top-0 right-0 m-4">
+          <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-900"></div>
+        </div>
+      )}
+      
       {/* Quick Add Transaction Button */}
       <Button
         onClick={() => setIsQuickAddOpen(true)}
         className="fixed bottom-4 right-4 rounded-full p-4"
+        disabled={isLoadingData}
       >
         <PlusCircle className="h-6 w-6" />
       </Button>

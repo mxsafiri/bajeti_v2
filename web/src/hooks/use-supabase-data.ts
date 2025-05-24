@@ -134,23 +134,37 @@ interface TransactionRow {
 // Hook: Get the current authenticated user
 export function useCurrentUser() {
   return useFetchData(async (): Promise<UserType | null> => {
-    const userId = await getCurrentUserId(); // userId is now string
+    // First get the authenticated user from Supabase Auth
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
     
-    const { data, error } = await supabase
+    if (authError) {
+      console.error('Auth error:', authError);
+      return null;
+    }
+
+    if (!authUser) {
+      console.log('No authenticated user found');
+      return null;
+    }
+
+    // Then get the user's profile from the users table
+    const { data: userData, error: dbError } = await supabase
       .from('users')
-      .select('*') // Selects all columns, including new ones
-      .eq('id', userId) // Compare with string UUID
+      .select('*')
+      .eq('auth_id', authUser.id) // Use auth_id which is the UUID from auth.users
       .single();
 
-    if (error) {
-      // PGRST116 means no rows found, which can be valid if user record somehow doesn't exist
-      if (error.code === 'PGRST116') {
-        console.warn(`No user found in 'users' table with id: ${userId}`);
+    if (dbError) {
+      console.error('Database error:', dbError);
+      // If no user profile exists, this might be a first-time login
+      if (dbError.code === 'PGRST116') {
+        console.warn(`No user profile found for auth_id: ${authUser.id}`);
         return null;
       }
-      throw error;
+      throw dbError;
     }
-    return data as UserType | null; // Assert to our updated UserType
+
+    return userData;
   });
 }
 
