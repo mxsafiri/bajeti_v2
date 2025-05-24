@@ -4,10 +4,10 @@
 
 ### Core Features
 - [x] User authentication and profile management
-- [x] Budget creation and management
-- [x] Expense tracking and categorization
-- [x] Basic financial insights and reporting
-- [x] Responsive web & mobile interface
+- [] Budget creation and management
+- [] Expense tracking and categorization
+- [] Basic financial insights and reporting
+- [] Responsive web & mobile interface
 
 ## Short-term Roadmap 
 
