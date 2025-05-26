@@ -5,19 +5,20 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 
-interface Expense {
-  id: string;
-  amount: number;
-  description: string;
-  date: string;
-  category: {
-    name: string;
-    color: string;
-  };
-}
+import type { Transaction, Category } from '@/types/database';
 
 interface RecentExpensesProps {
-  expenses: Expense[];
+  expenses: {
+    id: number;
+    amount: number;
+    description: string | null;
+    date: string;
+    category: {
+      id: number;
+      name: string;
+      color: string;
+    };
+  }[];
   showMore?: boolean;
 }
 
@@ -38,7 +39,7 @@ export function RecentExpenses({ expenses, showMore = false }: RecentExpensesPro
             </p>
           </div>
           <div className="ml-auto font-medium">
-            ${expense.amount.toFixed(2)}
+            ${expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
       ))}

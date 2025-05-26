@@ -3,20 +3,27 @@
 import * as React from 'react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 
-interface CategoryData {
-  name: string;
-  total: number;
-  color: string;
-}
-
 interface OverviewProps {
-  data: CategoryData[];
+  data: {
+    categoryId: number;
+    categoryName: string;
+    categoryColor: string;
+    allocated: number;
+    spent: number;
+    remaining: number;
+  }[];
 }
 
 export function Overview({ data }: OverviewProps) {
+  const chartData = data.map(item => ({
+    name: item.categoryName,
+    total: item.spent,
+    color: item.categoryColor
+  }));
+
   return (
     <ResponsiveContainer width="100%" height={350}>
-      <BarChart data={data}>
+      <BarChart data={chartData}>
         <XAxis
           dataKey="name"
           stroke="#888888"

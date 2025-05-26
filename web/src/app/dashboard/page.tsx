@@ -4,37 +4,40 @@ import * as React from 'react';
 import { createClient } from '@/lib/supabase-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TransactionDialog } from './_components/transaction-dialog';
+import { BudgetDialog } from './_components/budget-dialog';
 import { Overview } from './_components/overview';
 import { RecentExpenses } from './_components/recent-expenses';
 import { CategoryBreakdown } from './_components/category-breakdown';
+import type { Transaction, Category, Budget, BudgetCategory } from '@/types/database';
 
-interface ExpenseCategory {
-  id: string;
-  name: string;
-  color: string;
-  icon: string;
-}
-
-interface Expense {
-  id: string;
+interface DashboardTransaction {
+  id: number;
   amount: number;
-  description: string;
+  description: string | null;
   date: string;
-  category: ExpenseCategory;
-}
-
-interface CategoryBudget {
-  category_id: string;
+  category_id: number;
   categories: {
+    id: number;
     name: string;
     color: string;
   };
-  allocated_amount: number;
-  expenses?: { amount: number }[];
 }
 
-interface CategoryBreakdown {
-  categoryId: string;
+interface DashboardCategoryBudget {
+  id: number;
+  category_id: number;
+  amount: number;
+  categories: {
+    id: number;
+    name: string;
+    color: string;
+  };
+  transactions: { amount: number }[];
+}
+
+interface CategoryBreakdownItem {
+  categoryId: number;
   categoryName: string;
   categoryColor: string;
   allocated: number;
@@ -42,93 +45,115 @@ interface CategoryBreakdown {
   remaining: number;
 }
 
-interface CategoryData {
-  name: string;
-  total: number;
-  color: string;
-}
-
 interface DashboardData {
   totalExpenses: number;
   totalBudget: number;
-  recentExpenses: Expense[];
-  categoryBreakdown: CategoryBreakdown[];
+  recentExpenses: {
+    id: number;
+    amount: number;
+    description: string | null;
+    date: string;
+    category: {
+      id: number;
+      name: string;
+      color: string;
+    };
+  }[];
+  categoryBreakdown: CategoryBreakdownItem[];
 }
 
-async function fetchDashboardData() {
-  const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  if (!session) {
-    throw new Error('No session found');
+async function fetchDashboardData(): Promise<DashboardData> {
+  try {
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      throw new Error('No session found');
+    }
+
+    const userId = session.user.id;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    // Get current budget
+    const { data: budget } = await supabase
+      .from('budgets')
+      .select('id, needs_percentage, wants_percentage, savings_percentage')
+      .eq('user_id', userId)
+      .eq('month', currentMonth)
+      .eq('year', currentYear)
+      .single();
+
+    // Get recent transactions with categories
+    const { data: transactions } = await supabase
+      .from('transactions')
+      .select(`
+        id,
+        amount,
+        description,
+        date,
+        category_id,
+        categories (id, name, color)
+      `)
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(5) as { data: DashboardTransaction[] | null };
+
+    // Get category budgets with transactions
+    const { data: categoryBudgets } = await supabase
+      .from('category_budgets')
+      .select(`
+        id,
+        category_id,
+        amount,
+        categories (id, name, color),
+        transactions (amount)
+    `)
+    .eq('user_id', userId)
+    .eq('budget_id', budget?.id) as { data: DashboardCategoryBudget[] | null };
+
+    // Calculate totals
+    const totalBudget = budget ? 100 : 0; // 100% total
+    const totalExpenses = categoryBudgets?.reduce((sum: number, cat: DashboardCategoryBudget) => {
+      return sum + (cat.transactions?.reduce((total: number, tx: { amount: number }) => total + tx.amount, 0) || 0);
+    }, 0) || 0;
+
+    // Transform category data
+    const categoryBreakdown = categoryBudgets?.map((cat: DashboardCategoryBudget): CategoryBreakdownItem => ({
+      categoryId: cat.category_id,
+      categoryName: cat.categories.name,
+      categoryColor: cat.categories.color,
+      allocated: cat.amount,
+      spent: cat.transactions?.reduce((sum: number, tx: { amount: number }) => sum + tx.amount, 0) || 0,
+      remaining: cat.amount - (cat.transactions?.reduce((sum: number, tx: { amount: number }) => sum + tx.amount, 0) || 0)
+    })) || [];
+
+    return {
+      totalExpenses,
+      totalBudget,
+      recentExpenses: transactions?.map((tx: DashboardTransaction) => ({
+        id: tx.id,
+        amount: tx.amount,
+        description: tx.description,
+        date: tx.date,
+        category: {
+          id: tx.categories.id,
+          name: tx.categories.name,
+          color: tx.categories.color
+        }
+      })) || [],
+      categoryBreakdown: categoryBreakdown
+    };
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error);
+    return {
+      totalExpenses: 0,
+      totalBudget: 0,
+      recentExpenses: [],
+      categoryBreakdown: []
+    };
   }
-
-  const userId = session.user.id;
-  const now = new Date();
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  // Get current budget
-  const { data: currentBudget } = await supabase
-    .from('budgets')
-    .select('id, amount')
-    .eq('user_id', userId)
-    .lte('start_date', now.toISOString())
-    .gt('end_date', now.toISOString())
-    .single();
-
-  // Get recent expenses
-  const { data: recentExpenses } = await supabase
-    .from('expenses')
-    .select(`
-      id,
-      amount,
-      description,
-      date,
-      category:categories (id, name, color, icon)
-    `)
-    .eq('user_id', userId)
-    .order('date', { ascending: false })
-    .limit(5) as { data: Expense[] | null };
-
-  // Get category breakdown
-  const { data: categories } = await supabase
-    .from('category_budgets')
-    .select(`
-      category_id,
-      categories (name, color),
-      allocated_amount,
-      expenses:expenses (amount)
-    `)
-    .eq('user_id', userId)
-    .eq('budget_id', currentBudget?.id)
-    .order('allocated_amount', { ascending: false });
-
-  // Calculate total expenses for the current month
-  const { data: monthlyExpenses } = await supabase
-    .from('expenses')
-    .select('amount')
-    .eq('user_id', userId)
-    .gte('date', firstDayOfMonth.toISOString())
-    .lte('date', lastDayOfMonth.toISOString());
-
-  const totalExpenses = monthlyExpenses?.reduce((sum: number, expense: { amount: number }) => sum + expense.amount, 0) || 0;
-
-  const categoryBreakdown = (categories as CategoryBudget[] | null)?.map(category => ({
-    categoryId: category.category_id,
-    categoryName: category.categories.name,
-    categoryColor: category.categories.color,
-    allocated: category.allocated_amount,
-    spent: category.expenses?.reduce((sum: number, expense: { amount: number }) => sum + expense.amount, 0) || 0,
-    remaining: category.allocated_amount - (category.expenses?.reduce((sum: number, expense: { amount: number }) => sum + expense.amount, 0) || 0)
-  })) || [];
-
-  return {
-    totalExpenses,
-    totalBudget: currentBudget?.amount || 0,
-    recentExpenses: recentExpenses || [],
-    categoryBreakdown
-  };
 }
 
 export default function DashboardPage(): React.ReactElement {
@@ -150,12 +175,7 @@ export default function DashboardPage(): React.ReactElement {
     );
   }
 
-  // Transform data for Overview component
-  const categoryData = data.categoryBreakdown.map((category): CategoryData => ({
-    name: category.categoryName,
-    total: category.spent,
-    color: category.categoryColor
-  }));
+
 
   return (
     <main className="flex flex-col gap-8">
@@ -166,7 +186,7 @@ export default function DashboardPage(): React.ReactElement {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${data.totalBudget.toLocaleString()}
+              {data.totalBudget}%
             </div>
             <p className="text-xs text-muted-foreground">
               Monthly budget
@@ -187,82 +207,55 @@ export default function DashboardPage(): React.ReactElement {
             </p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Remaining Budget</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${(data.totalBudget - data.totalExpenses).toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Available to spend
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Budget Health</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {Math.round((data.totalExpenses / data.totalBudget) * 100)}%
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Of budget used
-            </p>
-          </CardContent>
-        </Card>
       </section>
 
-      <div className="space-y-4">
-        <Tabs defaultValue="overview">
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="expenses">Recent Expenses</TabsTrigger>
-            <TabsTrigger value="categories">Categories</TabsTrigger>
-          </TabsList>
-          <TabsContent value="overview" className="space-y-4">
-            <Overview data={categoryData} />
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
             <Card className="col-span-4">
               <CardHeader>
-                <CardTitle>Overview</CardTitle>
-                <CardDescription>
-                  Your spending overview for this month
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Overview</CardTitle>
+                  <BudgetDialog />
+                </div>
               </CardHeader>
+              <CardContent className="pl-2">
+                <Overview data={data.categoryBreakdown} />
+              </CardContent>
             </Card>
-          </TabsContent>
-          <TabsContent value="expenses" className="space-y-4">
-            <Card>
+            <Card className="col-span-3">
               <CardHeader>
-                <CardTitle>Recent Expenses</CardTitle>
-                <CardDescription>
-                  Your latest transactions with details
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Recent Transactions</CardTitle>
+                    <CardDescription>
+                      You have made {data.recentExpenses.length} transactions this month.
+                    </CardDescription>
+                  </div>
+                  <TransactionDialog />
+                </div>
               </CardHeader>
               <CardContent>
                 <RecentExpenses expenses={data.recentExpenses} />
               </CardContent>
             </Card>
-          </TabsContent>
-          <TabsContent value="categories" className="space-y-4">
-            <Card>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            <Card className="col-span-4">
               <CardHeader>
-                <CardTitle>Categories</CardTitle>
-                <CardDescription>
-                  Your spending by category
-                </CardDescription>
+                <CardTitle>Category Breakdown</CardTitle>
               </CardHeader>
-              <CardContent>
-                <CategoryBreakdown categories={categoryData} />
+              <CardContent className="pl-2">
+                <CategoryBreakdown data={data.categoryBreakdown} />
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }

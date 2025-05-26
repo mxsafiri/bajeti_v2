@@ -3,50 +3,49 @@
 import * as React from 'react';
 import { Progress } from '@/components/ui/progress';
 
-interface Category {
-  name: string;
-  total: number;
-  color: string;
-}
-
 interface CategoryBreakdownProps {
-  categories: Category[];
+  data: {
+    categoryId: number;
+    categoryName: string;
+    categoryColor: string;
+    allocated: number;
+    spent: number;
+    remaining: number;
+  }[];
 }
 
-export function CategoryBreakdown({ categories }: CategoryBreakdownProps) {
-  const totalSpending = categories.reduce((sum, cat) => sum + cat.total, 0);
+export function CategoryBreakdown({ data }: CategoryBreakdownProps) {
+  const totalSpending = data.reduce((sum, cat) => sum + cat.spent, 0);
 
   return (
     <div className="space-y-8">
-      {categories.map((category) => (
-        <div key={category.name} className="space-y-2">
+      {data.map((category) => (
+        <div key={category.categoryId} className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: category.color }}
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: category.categoryColor }}
               />
-              <span className="text-sm font-medium">{category.name}</span>
+              <span className="text-sm font-medium">{category.categoryName}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">
-                ${category.total.toFixed(2)}
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted-foreground">
+                ${category.spent.toLocaleString()}
               </span>
-              <span className="text-xs text-muted-foreground">
-                {totalSpending > 0
-                  ? `${((category.total / totalSpending) * 100).toFixed(1)}%`
-                  : '0%'}
+              <span className="text-sm text-muted-foreground">
+                {Math.round((category.spent / totalSpending) * 100)}%
               </span>
             </div>
           </div>
           <Progress
-            value={totalSpending > 0 ? (category.total / totalSpending) * 100 : 0}
+            value={(category.spent / totalSpending) * 100}
             className="h-2"
-            style={{ backgroundColor: category.color }}
+            style={{ backgroundColor: category.categoryColor }}
           />
         </div>
       ))}
-      {categories.length === 0 && (
+      {data.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-4">
           No spending data available
         </p>
