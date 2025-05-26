@@ -56,10 +56,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const navItems: NavItem[] = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Expenses', href: '/dashboard/expenses', icon: Receipt },
-    { name: 'Budgets', href: '/dashboard/budgets', icon: Wallet },
-    { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
-    { name: 'Settings', href: '/dashboard/settings', icon: Settings },
   ];
 
   const handleSignOut = async () => {
