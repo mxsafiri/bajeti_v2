@@ -68,7 +68,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       if ('error' in result && result.error) {
         throw new Error(result.error);
       }
-      router.refresh();
+
+      // Clear cookies
+      document.cookie.split(';').forEach(cookie => {
+        document.cookie = cookie
+          .replace(/^ +/, '')
+          .replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/')
+      });
+
+      // Clear local storage
+      localStorage.clear();
+
+      // Redirect to home page
+      window.location.href = '/';
     } catch (error) {
       console.error('Error signing out:', error);
       toast({

@@ -92,12 +92,24 @@ export async function signUp(formData: FormData) {
 export async function signOut() {
   try {
     const supabase = await createClient()
-    const { error } = await supabase.auth.signOut()
+    
+    // Sign out from all tabs/windows
+    const { error } = await supabase.auth.signOut({
+      scope: 'global'
+    })
     
     if (error) {
       console.error('Sign out error:', error)
       return { error: 'Failed to sign out' }
     }
+    
+    // Clear cookies and local storage
+    document.cookie.split(';').forEach(cookie => {
+      document.cookie = cookie
+        .replace(/^ +/, '')
+        .replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/')
+    })
+    localStorage.clear()
     
     return { success: true }
   } catch (error) {
