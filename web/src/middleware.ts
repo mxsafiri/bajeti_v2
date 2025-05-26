@@ -55,7 +55,11 @@ export async function middleware(request: NextRequest) {
   // Debug logging
   console.log('Current path:', request.nextUrl.pathname)
   console.log('Session state:', session ? 'Authenticated' : 'Not authenticated')
-  if (sessionError) console.error('Session error:', sessionError)
+  if (sessionError) {
+    console.error('Session error:', sessionError)
+    // On session error, redirect to sign-in
+    return NextResponse.redirect(new URL('/auth/sign-in', request.url))
+  }
 
   const { pathname } = request.nextUrl
 
@@ -83,31 +87,16 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  // Auth routes are public but redirect to dashboard if already authenticated
-  if (pathname.startsWith('/auth')) {
-    if (session) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-    return response
-  }
-
-  // Dashboard routes are protected
-  if (pathname.startsWith('/dashboard')) {
-    if (!session) {
-      return NextResponse.redirect(new URL('/auth/sign-in', request.url))
-    }
-    return response
-  }
-
   // Allow access to all other routes (including root page) regardless of auth status
-
+  console.log('Accessing public route:', pathname)
   return response
 }
 
 export const config = {
   matcher: [
-    '/',
-    '/dashboard/:path*',
-    '/auth/:path*',
-  ],
+    '/auth/sign-in',
+    '/auth/sign-up',
+    '/auth/callback',
+    '/dashboard/:path*'
+  ]
 }
