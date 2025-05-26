@@ -50,13 +50,38 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
-  const isAuthPage = request.nextUrl.pathname.startsWith('/auth')
-  const isProtectedRoute = request.nextUrl.pathname.startsWith('/dashboard')
-  const isRootPage = request.nextUrl.pathname === '/'
+  // Debug logging
+  console.log('Current path:', request.nextUrl.pathname)
+  console.log('Session state:', session ? 'Authenticated' : 'Not authenticated')
+  if (sessionError) console.error('Session error:', sessionError)
 
   const { pathname } = request.nextUrl
+
+  // Handle auth routes (sign-in, sign-up)
+  if (pathname.startsWith('/auth')) {
+    // If user is already authenticated, redirect to dashboard
+    if (session) {
+      console.log('Authenticated user trying to access auth page, redirecting to dashboard')
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+    // Otherwise, allow access to auth pages
+    console.log('Unauthenticated user accessing auth page, allowing access')
+    return response
+  }
+
+  // Handle dashboard routes
+  if (pathname.startsWith('/dashboard')) {
+    // If user is not authenticated, redirect to sign-in
+    if (!session) {
+      console.log('Unauthenticated user trying to access dashboard, redirecting to sign-in')
+      return NextResponse.redirect(new URL('/auth/sign-in', request.url))
+    }
+    // Otherwise, allow access to dashboard
+    console.log('Authenticated user accessing dashboard, allowing access')
+    return response
+  }
 
   // Auth routes are public but redirect to dashboard if already authenticated
   if (pathname.startsWith('/auth')) {
