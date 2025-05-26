@@ -41,14 +41,21 @@ export function TransactionDialog() {
       if (!user) throw new Error('User not authenticated');
 
       const data = {
-        ...formData,
-        user_id: user.id,
+        description: formData.description,
         amount: formData.is_income ? formData.amount : -formData.amount, // Negative for expenses
-        date: formData.transaction_date.toISOString(),
+        category_id: parseInt(formData.category_id),
+        transaction_date: formData.transaction_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
+        user_id: user.id,
+        type: formData.is_income ? 'income' : 'expense'
       };
 
+      console.log('Submitting transaction:', data);
       const { error } = await supabase.from('transactions').insert([data]);
-      if (error) throw error;
+      
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
       setIsOpen(false);
       window.location.reload(); // Refresh to show new data

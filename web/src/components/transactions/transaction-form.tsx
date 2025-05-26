@@ -31,12 +31,11 @@ import { Textarea } from '@/components/ui/textarea';
 import type { Category } from '@/types/database';
 
 const formSchema = z.object({
-  amount: z.number().positive(),
+  amount: z.string().min(1).transform((val) => parseFloat(val)), // Handle string input
   description: z.string().min(1).max(255),
-  category_id: z.number(),
+  category_id: z.string().min(1), // Handle string input from select
   transaction_date: z.date(),
-  is_income: z.boolean(),
-  type: z.string().optional(),
+  is_income: z.boolean().default(false),
 });
 
 type TransactionFormData = z.infer<typeof formSchema>;
@@ -51,12 +50,11 @@ export function TransactionForm({ onSubmit, categories, isLoading = false }: Tra
   const form = useForm<TransactionFormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      amount: 0,
+      amount: '',
       description: '',
       transaction_date: new Date(),
-      category_id: 0,
+      category_id: '',
       is_income: false,
-      type: undefined,
     },
   });
 
@@ -79,8 +77,9 @@ export function TransactionForm({ onSubmit, categories, isLoading = false }: Tra
                     <Input
                       type="number"
                       step="0.01"
+                      placeholder="0.00"
                       {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                      onChange={(e) => field.onChange(e.target.value)}
                     />
                   </FormControl>
                   <FormMessage />
