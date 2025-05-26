@@ -47,10 +47,12 @@ export default async function middleware(request: NextRequest) {
 
     // Get the current path
     const path = request.nextUrl.pathname
+    console.log('[Middleware] Current path:', path)
 
     // Get the session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
+    console.log('[Middleware] Session state:', session ? 'Authenticated' : 'Not authenticated')
+    
     // If there's a session error, clear cookies and redirect to sign in
     if (sessionError) {
       console.error('Session error:', sessionError)
