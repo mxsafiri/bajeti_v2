@@ -1,26 +1,24 @@
 'use client';
 
-import { useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { 
   LayoutDashboard, 
   Receipt, 
   Wallet, 
   BarChart3, 
-  CreditCard, 
   Settings, 
   LogOut,
   Menu,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { signOut } from '@/app/actions';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Toaster } from '@/components/ui/toaster';
-import { useCurrentUser } from '@/hooks/use-supabase-data';
+import { supabase } from '@/lib/supabase-client';
+import { cn } from '@/lib/utils';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -34,224 +32,146 @@ interface NavItem {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { data: currentUser, isLoading } = useCurrentUser();
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
 
   const navItems: NavItem[] = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Expenses', href: '/dashboard/expenses', icon: Receipt },
-    { name: 'Wallets', href: '/dashboard/wallets', icon: Wallet },
-    { name: 'Summary', href: '/dashboard/summary', icon: BarChart3 },
-    { name: 'Accounts', href: '/dashboard/accounts', icon: CreditCard },
+    { name: 'Budgets', href: '/dashboard/budgets', icon: Wallet },
+    { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
     { name: 'Settings', href: '/dashboard/settings', icon: Settings },
   ];
 
+  useEffect(() => {
+    async function getUser() {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        if (!user) {
+          router.push('/login');
+          return;
+        }
+
+        const { data: profile, error: profileError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profileError) throw profileError;
+        setUser(profile);
+      } catch (error) {
+        console.error('Error:', error);
+        router.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    getUser();
+  }, [router]);
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      router.push('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-blue-50">
+    <div className="min-h-screen bg-background">
       {/* Mobile menu button */}
-      <div className="fixed top-4 left-4 z-50 lg:hidden">
-        <Button 
-          variant="outline" 
-          size="icon" 
-          className="bg-white/80 backdrop-blur-sm border-blue-100"
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        >
-          {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-        </Button>
-      </div>
+      <Button
+        variant="ghost"
+        className="fixed top-4 right-4 z-50 md:hidden"
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+      >
+        {isMobileMenuOpen ? <X /> : <Menu />}
+      </Button>
 
-      {/* Mobile sidebar */}
-      <div className="lg:hidden">
-        {isMobileMenuOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 flex"
-          >
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.7 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-blue-600 bg-opacity-75"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-
-            <motion.div
-              initial={{ x: -300 }}
-              animate={{ x: 0 }}
-              exit={{ x: -300 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="relative flex-1 flex flex-col max-w-xs w-full bg-white"
-            >
-              <div className="flex-1 pt-5 pb-4 overflow-y-auto">
-                <div className="flex items-center justify-center px-4 mb-6">
-                  <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">Bajeti</h1>
-                </div>
-                
-                {/* User profile for mobile */}
-                <div className="px-4 py-4 mb-6 flex items-center border-b border-blue-100">
-                  {isLoading ? (
-                    <div className="flex items-center">
-                      <Skeleton className="h-10 w-10 rounded-full" />
-                      <div className="ml-3">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-3 w-32 mt-1" />
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <Avatar className="h-10 w-10 border-2 border-blue-100">
-                        <AvatarImage src={currentUser?.avatar_url || ''} alt={currentUser?.full_name || 'User'} />
-                        <AvatarFallback className="bg-blue-100 text-blue-600">
-                          {currentUser?.full_name?.charAt(0) || 'U'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="ml-3">
-                        <p className="text-sm font-medium">{currentUser?.full_name || 'User'}</p>
-                        <p className="text-xs text-gray-500">{currentUser?.email || 'user@example.com'}</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-                
-                <nav className="px-4 space-y-2">
-                  {navItems.map((item) => (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className={`group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                        pathname === item.href
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'text-gray-600 hover:bg-blue-50/50 hover:text-blue-700'
-                      }`}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      <item.icon
-                        className={`mr-3 h-5 w-5 ${
-                          pathname === item.href
-                            ? 'text-blue-600'
-                            : 'text-gray-400 group-hover:text-blue-600'
-                        }`}
-                      />
-                      {item.name}
-                    </Link>
-                  ))}
-                </nav>
-              </div>
-              
-              {/* Sign out button for mobile */}
-              <div className="p-4 border-t border-blue-100">
-                <form action={signOut}>
-                  <Button 
-                    type="submit" 
-                    variant="outline" 
-                    className="w-full flex items-center justify-center text-blue-600 border-blue-200 hover:bg-blue-50"
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
-                  </Button>
-                </form>
-              </div>
-            </motion.div>
-          </motion.div>
+      {/* Sidebar */}
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-40 w-64 transform bg-card border-r transition-transform duration-200 ease-in-out md:translate-x-0',
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         )}
-      </div>
+      >
+        {/* Logo and user info */}
+        <div className="p-6 border-b">
+          <h1 className="text-2xl font-bold">Bajeti</h1>
+          <div className="mt-4 flex items-center gap-3">
+            <Avatar>
+              <AvatarImage src={user?.avatar_url} />
+              <AvatarFallback>
+                {user?.full_name?.[0] || user?.email?.[0]?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">
+                {user?.full_name || 'User'}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {user?.email}
+              </p>
+            </div>
+          </div>
+        </div>
 
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0">
-        <div className="flex flex-col flex-grow bg-white/90 backdrop-blur-sm border-r border-blue-100 overflow-y-auto">
-          {/* Logo */}
-          <div className="px-6 pt-6 pb-4">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">Bajeti</h1>
-          </div>
-          
-          {/* User profile */}
-          <div className="px-6 py-4 mb-6 flex flex-col items-center border-b border-blue-100">
-            {isLoading ? (
-              <div className="flex flex-col items-center">
-                <Skeleton className="h-16 w-16 rounded-full mb-3" />
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-4 w-40 mt-1" />
-              </div>
-            ) : (
-              <>
-                <Avatar className="h-16 w-16 border-2 border-blue-100 mb-3">
-                  <AvatarImage src={currentUser?.avatar_url || ''} alt={currentUser?.full_name || 'User'} />
-                  <AvatarFallback className="bg-blue-100 text-blue-600 text-lg">
-                    {currentUser?.full_name?.charAt(0) || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="text-center">
-                  <p className="font-medium">{currentUser?.full_name || 'User'}</p>
-                  <p className="text-xs text-gray-500">{currentUser?.email || 'user@example.com'}</p>
-                </div>
-              </>
-            )}
-          </div>
-          
-          {/* Navigation */}
-          <nav className="flex-1 px-4 space-y-2">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                    isActive
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-blue-50/50 hover:text-blue-700'
-                  }`}
-                >
-                  <item.icon
-                    className={`mr-3 h-5 w-5 ${
-                      isActive
-                        ? 'text-blue-600'
-                        : 'text-gray-400 group-hover:text-blue-600'
-                    }`}
-                  />
-                  <span>{item.name}</span>
-                  {isActive && (
-                    <motion.div
-                      layoutId="sidebar-indicator"
-                      className="absolute left-0 w-1 h-8 bg-blue-600 rounded-r-full"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.2 }}
-                    />
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
-          
-          {/* Sign out button */}
-          <div className="p-4 border-t border-blue-100 mt-6">
-            <form action={signOut}>
-              <Button 
-                type="submit" 
-                variant="outline" 
-                className="w-full flex items-center justify-center text-blue-600 border-blue-200 hover:bg-blue-50"
+        {/* Navigation */}
+        <nav className="p-4 space-y-2">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary text-primary-foreground'
+                    : 'hover:bg-accent'
+                )}
               >
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign out
-              </Button>
-            </form>
-          </div>
-        </div>
-      </div>
-      
+                <item.icon className="h-4 w-4" />
+                {item.name}
+              </Link>
+            );
+          })}
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3"
+            onClick={handleSignOut}
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </Button>
+        </nav>
+      </aside>
+
       {/* Main content */}
-      <main className="lg:pl-64 flex-1">
-        <div className="py-6">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
-            {children}
-          </div>
-        </div>
+      <main
+        className={cn(
+          'min-h-screen transition-all duration-200 ease-in-out',
+          'md:ml-64 p-8'
+        )}
+      >
+        {children}
       </main>
 
-      {/* Toast notifications */}
       <Toaster />
     </div>
   );

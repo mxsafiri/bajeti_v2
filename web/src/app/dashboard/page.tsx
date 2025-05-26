@@ -1,328 +1,238 @@
 'use client';
-import React from 'react';
 
-import { useState } from 'react';
-import { redirect } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { format } from 'date-fns';
-import { 
-  PlusCircle, 
-  Calendar, 
-  DollarSign, 
-  TrendingUp, 
-  ShoppingBag,
-  ArrowRight,
-  ChevronRight,
-  CreditCard,
-  X,
-  Coffee,
-  Gift,
-  Zap,
-  Wallet,
-  Landmark,
-  CircleDollarSign
-} from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Overview } from './_components/overview';
+import { RecentExpenses } from './_components/recent-expenses';
+import { CategoryBreakdown } from './_components/category-breakdown';
+import { Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase-client';
 import { useToast } from '@/components/ui/use-toast';
 
-import { 
-  useCurrentUser,
-  useTransactions,
-  useCategories,
-  useCategorySpending,
-  useCurrentBudget,
-  useBudgetSummary,
-  createTransaction 
-} from '@/hooks/use-supabase-data';
-import type { Transaction, Category, CategorySpending } from '@/types/database';
-
-import BudgetForm from './budgets/components/budget-form';
-
-// Category icons mapping
-const CATEGORY_ICONS: { [key: string]: React.ElementType } = {
-  'Food & Dining': Coffee,
-  'Shopping': ShoppingBag,
-  'Entertainment': Gift,
-  'Utilities': Zap,
-  'Transportation': CreditCard,
-  'Housing': Landmark,
-  'Healthcare': CircleDollarSign,
-  'Other': DollarSign
-};
+interface DashboardData {
+  totalExpenses: number;
+  totalBudget: number;
+  recentExpenses: any[];
+  categoryBreakdown: any[];
+}
 
 export default function DashboardPage() {
-  const { toast } = useToast();
-  
-  // Get current user and their data
-  const { data: user, isLoading: userLoading } = useCurrentUser();
-  
-  // Get recent transactions
-  const { data: transactions, isLoading: transactionsLoading } = useTransactions(5);
-  
-  // Get categories for spending breakdown
-  const { data: categories, isLoading: categoriesLoading } = useCategories();
-  
-  // Get spending by category
-  const { data: categorySpending, isLoading: spendingLoading } = useCategorySpending();
-  
-  // Get current budget
-  const { data: currentBudget, isLoading: budgetLoading } = useCurrentBudget();
-  const { data: budgetSummary, isLoading: budgetSummaryLoading } = useBudgetSummary(currentBudget?.id);
-
-  // State for quick add form
-  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [newExpense, setNewExpense] = useState({
-    amount: 0,
-    category_id: null as number | null,
-    description: '',
-    date: format(new Date(), 'yyyy-MM-dd'),
-    is_income: false,
-    receipt_url: null as string | null,
-    type: 'expense' as const,
-    user_id: user?.id ?? 0,
-    account_id: null as number | null
+  const [isLoading, setIsLoading] = useState(true);
+  const [data, setData] = useState<DashboardData>({
+    totalExpenses: 0,
+    totalBudget: 0,
+    recentExpenses: [],
+    categoryBreakdown: []
   });
+  const { toast } = useToast();
 
-  // Check authentication first
-  if (!userLoading && !user) {
-    redirect('/auth/login');
-  }
+  useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        setIsLoading(true);
+        
+        // Get current user
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError) throw authError;
+        if (!user) return;
 
-  // Show loading state only for initial user load
-  if (userLoading) {
+        // Get total expenses for the current month
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        const { data: expenses, error: expensesError } = await supabase
+          .from('expenses')
+          .select('amount')
+          .eq('user_id', user.id)
+          .gte('date', startOfMonth.toISOString());
+
+        if (expensesError) throw expensesError;
+
+        const totalExpenses = expenses?.reduce((sum, exp) => sum + exp.amount, 0) || 0;
+
+        // Get current budget
+        const { data: budgets, error: budgetsError } = await supabase
+          .from('budgets')
+          .select('amount')
+          .eq('user_id', user.id)
+          .eq('period', 'monthly')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (budgetsError && budgetsError.code !== 'PGRST116') throw budgetsError;
+
+        // Get recent expenses
+        const { data: recentExpenses, error: recentError } = await supabase
+          .from('expenses')
+          .select('*, category:categories(name, color)')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .limit(5);
+
+        if (recentError) throw recentError;
+
+        // Get category breakdown
+        const { data: categoryBreakdown, error: categoryError } = await supabase
+          .from('categories')
+          .select('name, color, expenses:expenses(amount)')
+          .eq('user_id', user.id)
+          .eq('expenses.user_id', user.id)
+          .gte('expenses.date', startOfMonth.toISOString());
+
+        if (categoryError) throw categoryError;
+
+        setData({
+          totalExpenses,
+          totalBudget: budgets?.amount || 0,
+          recentExpenses: recentExpenses || [],
+          categoryBreakdown: categoryBreakdown?.map(cat => ({
+            name: cat.name,
+            color: cat.color,
+            total: cat.expenses.reduce((sum: number, exp: any) => sum + exp.amount, 0)
+          })) || []
+        });
+
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load dashboard data. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchDashboardData();
+  }, [toast]);
+
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-gray-900"></div>
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
 
-  // If we have a user but other data is loading, show a loading indicator in the layout
-  const isLoadingData = transactionsLoading || categoriesLoading || spendingLoading || budgetLoading || budgetSummaryLoading;
-
-  // Handle transaction creation
-  const handleCreateTransaction = async () => {
-    if (!user) return;
-
-    try {
-      const { user_id: _, ...restOfNewExpense } = newExpense; // Destructure and omit user_id from newExpense
-      await createTransaction({
-        ...restOfNewExpense,
-        user_id: user.id, // Use user.id from the authenticated user session
-      });
-
-      toast({
-        title: "Success",
-        description: "Transaction added successfully",
-      });
-
-      setIsQuickAddOpen(false);
-      setNewExpense({
-        amount: 0,
-        category_id: null,
-        description: '',
-        date: format(new Date(), 'yyyy-MM-dd'),
-        is_income: false,
-        receipt_url: null,
-        type: 'expense' as const,
-        user_id: user.id,
-        account_id: null
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to add transaction",
-        variant: "destructive",
-      });
-    }
-  };
-
   return (
-    <div className="container mx-auto px-4 py-8 relative">
-      {isLoadingData && (
-        <div className="absolute top-0 right-0 m-4">
-          <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-900"></div>
-        </div>
-      )}
-      
-      {/* Quick Add Transaction Button */}
-      <Button
-        onClick={() => setIsQuickAddOpen(true)}
-        className="fixed bottom-4 right-4 rounded-full p-4"
-        disabled={isLoadingData}
-      >
-        <PlusCircle className="h-6 w-6" />
-      </Button>
-
-      {/* Dashboard Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Total Balance Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Balance</CardTitle>
-            <Wallet className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'TZS'
-              }).format(budgetSummary?.total ?? 0)}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Transactions */}
-        <Card className="col-span-full">
-          <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {transactions?.map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className="flex items-center justify-between p-4 rounded-lg bg-secondary"
-                >
-                  <div className="flex items-center space-x-4">
-                    {CATEGORY_ICONS[transaction.categories?.name ?? 'Other'] && (
-                      <div className="p-2 rounded-full bg-primary/10">
-                        {React.createElement(
-                          CATEGORY_ICONS[transaction.categories?.name ?? 'Other'],
-                          { className: "h-4 w-4 text-primary" }
-                        )}
-                      </div>
-                    )}
-                    <div>
-                      <p className="font-medium">{transaction.description}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {format(new Date(transaction.date), 'MMM d, yyyy')}
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`font-bold ${transaction.is_income ? 'text-green-600' : 'text-red-600'}`}>
-                    {transaction.is_income ? '+' : '-'}
-                    {new Intl.NumberFormat('en-US', {
-                      style: 'currency',
-                      currency: 'TZS'
-                    }).format(Math.abs(Number(transaction.amount)))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <div>
-          <h2>Manage Budgets</h2>
-          <BudgetForm />
-        </div>
+    <div className="flex flex-col gap-8">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        <p className="text-muted-foreground">
+          Here's an overview of your finances
+        </p>
       </div>
 
-      {/* Quick Add Transaction Modal */}
-      <AnimatePresence>
-        {isQuickAddOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
-              className="bg-white rounded-lg p-6 w-full max-w-md"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Add Transaction</h2>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsQuickAddOpen(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="expenses">Expenses</TabsTrigger>
+          <TabsTrigger value="categories">Categories</TabsTrigger>
+        </TabsList>
 
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="amount">Amount</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    value={newExpense.amount}
-                    onChange={(e) => setNewExpense({
-                      ...newExpense,
-                      amount: Number(e.target.value)
-                    })}
-                  />
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Expenses
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  ${data.totalExpenses.toFixed(2)}
                 </div>
-
-                <div>
-                  <Label htmlFor="category">Category</Label>
-                  <Select
-                    value={String(newExpense.category_id)}
-                    onValueChange={(value) => setNewExpense({
-                      ...newExpense,
-                      category_id: Number(value)
-                    })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories?.map((category) => (
-                        <SelectItem key={category.id} value={String(category.id)}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <p className="text-xs text-muted-foreground">
+                  For this month
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Monthly Budget
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  ${data.totalBudget.toFixed(2)}
                 </div>
-
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Input
-                    id="description"
-                    value={newExpense.description}
-                    onChange={(e) => setNewExpense({
-                      ...newExpense,
-                      description: e.target.value
-                    })}
-                  />
+                <p className="text-xs text-muted-foreground">
+                  {data.totalExpenses > data.totalBudget ? 'Over budget' : 'Within budget'}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Remaining Budget
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  ${(data.totalBudget - data.totalExpenses).toFixed(2)}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  {((data.totalBudget - data.totalExpenses) / data.totalBudget * 100).toFixed(1)}% remaining
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            <Card className="col-span-4">
+              <CardHeader>
+                <CardTitle>Overview</CardTitle>
+              </CardHeader>
+              <CardContent className="pl-2">
+                <Overview data={data.categoryBreakdown} />
+              </CardContent>
+            </Card>
+            <Card className="col-span-3">
+              <CardHeader>
+                <CardTitle>Recent Expenses</CardTitle>
+                <CardDescription>
+                  Your latest transactions
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <RecentExpenses expenses={data.recentExpenses} />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
-                <div>
-                  <Label htmlFor="date">Date</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={newExpense.date}
-                    onChange={(e) => setNewExpense({
-                      ...newExpense,
-                      date: e.target.value
-                    })}
-                  />
-                </div>
+        <TabsContent value="expenses" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Expenses</CardTitle>
+              <CardDescription>
+                Your latest transactions with details
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RecentExpenses expenses={data.recentExpenses} showMore />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-                <Button
-                  className="w-full"
-                  onClick={handleCreateTransaction}
-                >
-                  Add Transaction
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        <TabsContent value="categories" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Spending by Category</CardTitle>
+              <CardDescription>
+                Your expense breakdown by category
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CategoryBreakdown categories={data.categoryBreakdown} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
