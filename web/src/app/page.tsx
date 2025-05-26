@@ -22,16 +22,20 @@ export default function Home() {
             <div className="flex items-center space-x-4">
               <Button 
                 variant="ghost" 
-                asChild
                 className="text-blue-600 hover:text-blue-700 hover:bg-blue-50/50"
+                onClick={() => {
+                  window.location.href = '/auth/sign-in'
+                }}
               >
-                <Link href="/auth/sign-in">Sign in</Link>
+                Sign in
               </Button>
               <Button 
-                asChild
                 className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => {
+                  window.location.href = '/auth/sign-up'
+                }}
               >
-                <Link href="/auth/sign-up">Get Started</Link>
+                Get Started
               </Button>
             </div>
           </div>
