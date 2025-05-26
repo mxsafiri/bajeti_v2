@@ -31,15 +31,30 @@ export function TransactionDialog() {
     fetchCategories();
   }, []);
 
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (formData: any) => {
     setIsLoading(true);
     try {
       const supabase = await createClient();
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const data = {
+        ...formData,
+        user_id: user.id,
+        amount: formData.is_income ? formData.amount : -formData.amount, // Negative for expenses
+        date: formData.transaction_date.toISOString(),
+      };
+
       const { error } = await supabase.from('transactions').insert([data]);
       if (error) throw error;
+
       setIsOpen(false);
+      window.location.reload(); // Refresh to show new data
     } catch (error) {
       console.error('Error adding transaction:', error);
+      alert('Failed to add transaction. Please try again.');
     } finally {
       setIsLoading(false);
     }

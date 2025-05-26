@@ -18,15 +18,22 @@ export function BudgetDialog() {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
 
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (formData: any) => {
     setIsLoading(true);
     try {
       const supabase = await createClient();
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Create budget
       const { data: budget, error: budgetError } = await supabase
         .from('budgets')
         .insert([{
-          month: data.month,
-          year: data.year,
+          month: formData.month,
+          year: formData.year,
+          user_id: user.id
         }])
         .select()
         .single();
@@ -38,15 +45,19 @@ export function BudgetDialog() {
         .from('budget_allocations')
         .insert([{
           budget_id: budget.id,
-          needs_percentage: data.needs_percentage,
-          wants_percentage: data.wants_percentage,
-          savings_percentage: data.savings_percentage,
+          user_id: user.id,
+          needs_percentage: formData.needs_percentage,
+          wants_percentage: formData.wants_percentage,
+          savings_percentage: formData.savings_percentage,
         }]);
 
       if (allocationError) throw allocationError;
+      
       setIsOpen(false);
+      window.location.reload(); // Refresh to show new data
     } catch (error) {
       console.error('Error setting budget:', error);
+      alert('Failed to set budget. Please try again.');
     } finally {
       setIsLoading(false);
     }
