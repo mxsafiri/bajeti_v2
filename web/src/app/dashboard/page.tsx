@@ -1,238 +1,268 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import * as React from 'react';
+import { createClient } from '@/lib/supabase-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Overview } from './_components/overview';
 import { RecentExpenses } from './_components/recent-expenses';
 import { CategoryBreakdown } from './_components/category-breakdown';
-import { Loader2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase-client';
-import { useToast } from '@/components/ui/use-toast';
+
+interface ExpenseCategory {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+}
+
+interface Expense {
+  id: string;
+  amount: number;
+  description: string;
+  date: string;
+  category: ExpenseCategory;
+}
+
+interface CategoryBudget {
+  category_id: string;
+  categories: {
+    name: string;
+    color: string;
+  };
+  allocated_amount: number;
+  expenses?: { amount: number }[];
+}
+
+interface CategoryBreakdown {
+  categoryId: string;
+  categoryName: string;
+  categoryColor: string;
+  allocated: number;
+  spent: number;
+  remaining: number;
+}
+
+interface CategoryData {
+  name: string;
+  total: number;
+  color: string;
+}
 
 interface DashboardData {
   totalExpenses: number;
   totalBudget: number;
-  recentExpenses: any[];
-  categoryBreakdown: any[];
+  recentExpenses: Expense[];
+  categoryBreakdown: CategoryBreakdown[];
 }
 
-export default function DashboardPage() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [data, setData] = useState<DashboardData>({
-    totalExpenses: 0,
-    totalBudget: 0,
-    recentExpenses: [],
-    categoryBreakdown: []
-  });
-  const { toast } = useToast();
+async function fetchDashboardData() {
+  const supabase = await createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    throw new Error('No session found');
+  }
 
-  useEffect(() => {
-    async function fetchDashboardData() {
-      try {
-        setIsLoading(true);
-        
-        // Get current user
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError) throw authError;
-        if (!user) return;
+  const userId = session.user.id;
+  const now = new Date();
+  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-        // Get total expenses for the current month
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
+  // Get current budget
+  const { data: currentBudget } = await supabase
+    .from('budgets')
+    .select('id, amount')
+    .eq('user_id', userId)
+    .lte('start_date', now.toISOString())
+    .gt('end_date', now.toISOString())
+    .single();
 
-        const { data: expenses, error: expensesError } = await supabase
-          .from('expenses')
-          .select('amount')
-          .eq('user_id', user.id)
-          .gte('date', startOfMonth.toISOString());
+  // Get recent expenses
+  const { data: recentExpenses } = await supabase
+    .from('expenses')
+    .select(`
+      id,
+      amount,
+      description,
+      date,
+      category:categories (id, name, color, icon)
+    `)
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .limit(5) as { data: Expense[] | null };
 
-        if (expensesError) throw expensesError;
+  // Get category breakdown
+  const { data: categories } = await supabase
+    .from('category_budgets')
+    .select(`
+      category_id,
+      categories (name, color),
+      allocated_amount,
+      expenses:expenses (amount)
+    `)
+    .eq('user_id', userId)
+    .eq('budget_id', currentBudget?.id)
+    .order('allocated_amount', { ascending: false });
 
-        const totalExpenses = expenses?.reduce((sum, exp) => sum + exp.amount, 0) || 0;
+  // Calculate total expenses for the current month
+  const { data: monthlyExpenses } = await supabase
+    .from('expenses')
+    .select('amount')
+    .eq('user_id', userId)
+    .gte('date', firstDayOfMonth.toISOString())
+    .lte('date', lastDayOfMonth.toISOString());
 
-        // Get current budget
-        const { data: budgets, error: budgetsError } = await supabase
-          .from('budgets')
-          .select('amount')
-          .eq('user_id', user.id)
-          .eq('period', 'monthly')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+  const totalExpenses = monthlyExpenses?.reduce((sum: number, expense: { amount: number }) => sum + expense.amount, 0) || 0;
 
-        if (budgetsError && budgetsError.code !== 'PGRST116') throw budgetsError;
+  const categoryBreakdown = (categories as CategoryBudget[] | null)?.map(category => ({
+    categoryId: category.category_id,
+    categoryName: category.categories.name,
+    categoryColor: category.categories.color,
+    allocated: category.allocated_amount,
+    spent: category.expenses?.reduce((sum: number, expense: { amount: number }) => sum + expense.amount, 0) || 0,
+    remaining: category.allocated_amount - (category.expenses?.reduce((sum: number, expense: { amount: number }) => sum + expense.amount, 0) || 0)
+  })) || [];
 
-        // Get recent expenses
-        const { data: recentExpenses, error: recentError } = await supabase
-          .from('expenses')
-          .select('*, category:categories(name, color)')
-          .eq('user_id', user.id)
-          .order('date', { ascending: false })
-          .limit(5);
+  return {
+    totalExpenses,
+    totalBudget: currentBudget?.amount || 0,
+    recentExpenses: recentExpenses || [],
+    categoryBreakdown
+  };
+}
 
-        if (recentError) throw recentError;
+export default function DashboardPage(): React.ReactElement {
+  const [data, setData] = React.useState<DashboardData | null>(null);
 
-        // Get category breakdown
-        const { data: categoryBreakdown, error: categoryError } = await supabase
-          .from('categories')
-          .select('name, color, expenses:expenses(amount)')
-          .eq('user_id', user.id)
-          .eq('expenses.user_id', user.id)
-          .gte('expenses.date', startOfMonth.toISOString());
-
-        if (categoryError) throw categoryError;
-
-        setData({
-          totalExpenses,
-          totalBudget: budgets?.amount || 0,
-          recentExpenses: recentExpenses || [],
-          categoryBreakdown: categoryBreakdown?.map(cat => ({
-            name: cat.name,
-            color: cat.color,
-            total: cat.expenses.reduce((sum: number, exp: any) => sum + exp.amount, 0)
-          })) || []
-        });
-
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load dashboard data. Please try again.',
-          variant: 'destructive',
-        });
-      } finally {
-        setIsLoading(false);
-      }
+  React.useEffect(() => {
+    async function loadData() {
+      const dashboardData = await fetchDashboardData();
+      setData(dashboardData);
     }
+    loadData();
+  }, []);
 
-    fetchDashboardData();
-  }, [toast]);
-
-  if (isLoading) {
+  if (!data) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
     );
   }
 
+  // Transform data for Overview component
+  const categoryData = data.categoryBreakdown.map((category): CategoryData => ({
+    name: category.categoryName,
+    total: category.spent,
+    color: category.categoryColor
+  }));
+
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-        <p className="text-muted-foreground">
-          Here's an overview of your finances
-        </p>
-      </div>
+    <main className="flex flex-col gap-8">
+      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Budget</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ${data.totalBudget.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Monthly budget
+            </p>
+          </CardContent>
+        </Card>
 
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="expenses">Expenses</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-        </TabsList>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ${data.totalExpenses.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This month
+            </p>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Total Expenses
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ${data.totalExpenses.toFixed(2)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  For this month
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Monthly Budget
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ${data.totalBudget.toFixed(2)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {data.totalExpenses > data.totalBudget ? 'Over budget' : 'Within budget'}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Remaining Budget
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ${(data.totalBudget - data.totalExpenses).toFixed(2)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {((data.totalBudget - data.totalExpenses) / data.totalBudget * 100).toFixed(1)}% remaining
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Remaining Budget</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ${(data.totalBudget - data.totalExpenses).toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Available to spend
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Budget Health</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {Math.round((data.totalExpenses / data.totalBudget) * 100)}%
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Of budget used
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      <div className="space-y-4">
+        <Tabs defaultValue="overview">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="expenses">Recent Expenses</TabsTrigger>
+            <TabsTrigger value="categories">Categories</TabsTrigger>
+          </TabsList>
+          <TabsContent value="overview" className="space-y-4">
+            <Overview data={categoryData} />
             <Card className="col-span-4">
               <CardHeader>
                 <CardTitle>Overview</CardTitle>
+                <CardDescription>
+                  Your spending overview for this month
+                </CardDescription>
               </CardHeader>
-              <CardContent className="pl-2">
-                <Overview data={data.categoryBreakdown} />
-              </CardContent>
             </Card>
-            <Card className="col-span-3">
+          </TabsContent>
+          <TabsContent value="expenses" className="space-y-4">
+            <Card>
               <CardHeader>
                 <CardTitle>Recent Expenses</CardTitle>
                 <CardDescription>
-                  Your latest transactions
+                  Your latest transactions with details
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <RecentExpenses expenses={data.recentExpenses} />
               </CardContent>
             </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="expenses" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Expenses</CardTitle>
-              <CardDescription>
-                Your latest transactions with details
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <RecentExpenses expenses={data.recentExpenses} showMore />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="categories" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Spending by Category</CardTitle>
-              <CardDescription>
-                Your expense breakdown by category
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <CategoryBreakdown categories={data.categoryBreakdown} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+          </TabsContent>
+          <TabsContent value="categories" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Categories</CardTitle>
+                <CardDescription>
+                  Your spending by category
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CategoryBreakdown categories={categoryData} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </main>
   );
 }

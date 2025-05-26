@@ -14,7 +14,7 @@ export async function signIn(formData: FormData) {
     
     const supabase = await createClient()
     
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -34,11 +34,8 @@ export async function signIn(formData: FormData) {
       return { error: `Authentication failed: ${error.message}` }
     }
     
-    if (!data.session) {
-      return { error: 'Failed to create session. Please verify your email first.' }
-    }
-    
-    return redirect('/dashboard')
+    // Success - let the middleware handle the redirect
+    return { success: true }
   } catch (err) {
     console.error('Unexpected error during sign-in:', err)
     return { error: 'An unexpected error occurred. Please try again.' }
@@ -57,50 +54,56 @@ export async function signUp(formData: FormData) {
     
     const supabase = await createClient()
     
-    // First, sign up the user with Supabase Auth
-    const { data: authData, error: signUpError } = await supabase.auth.signUp({
+    const { error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: fullName,
-          email_redirect_to: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`,
         },
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`,
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
       },
     })
     
     if (signUpError) {
       console.error('Sign up error:', signUpError)
       
-      // Handle specific error cases
       if (signUpError.message.includes('already registered')) {
         return { error: 'This email is already registered. Please sign in instead.' }
       }
       
       if (signUpError.message.includes('password')) {
-        return { error: 'Password does not meet requirements. Please use at least 6 characters.' }
+        return { error: 'Password must be at least 6 characters.' }
       }
       
-      return { error: `Failed to create account: ${signUpError.message}` }
+      return { error: signUpError.message }
     }
-    
-    // If we get here, the user was created successfully
-    // The database trigger will create the user profile in the public.users table
     
     return { 
-      success: 'Account created successfully! Please check your email to confirm your account.' 
+      success: true,
+      message: 'Please check your email to verify your account.'
     }
-  } catch (error) {
-    console.error('Unexpected error during sign up:', error)
-    return { error: 'An unexpected error occurred. Please try again later.' }
+  } catch (err) {
+    console.error('Unexpected error during sign-up:', err)
+    return { error: 'An unexpected error occurred. Please try again.' }
   }
 }
 
 export async function signOut() {
-  const supabase = await createClient()
-  await supabase.auth.signOut()
-  return redirect('/')
+  try {
+    const supabase = await createClient()
+    const { error } = await supabase.auth.signOut()
+    
+    if (error) {
+      console.error('Sign out error:', error)
+      return { error: 'Failed to sign out' }
+    }
+    
+    return { success: true }
+  } catch (error) {
+    console.error('Unexpected error during sign-out:', error)
+    return { error: 'An unexpected error occurred' }
+  }
 }
 
 export async function getSession() {

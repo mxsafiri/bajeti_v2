@@ -11,14 +11,17 @@ import {
   Settings, 
   LogOut,
   Menu,
-  X,
-  Loader2
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Toaster } from '@/components/ui/toaster';
-import { supabase } from '@/lib/supabase-client';
+import { useToast } from '@/components/ui/use-toast';
+import { signOut } from '@/app/actions';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase-client';
+import type { User } from '@supabase/supabase-js';
+import type { Database } from '@/types/supabase';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -33,9 +36,23 @@ interface NavItem {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { toast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [userMetadata, setUserMetadata] = useState<{ full_name?: string; avatar_url?: string } | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      if (user) {
+        setUserMetadata(user.user_metadata as { full_name?: string; avatar_url?: string });
+      }
+    };
+
+    fetchUser();
+  }, []);
 
   const navItems: NavItem[] = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
@@ -45,52 +62,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Settings', href: '/dashboard/settings', icon: Settings },
   ];
 
-  useEffect(() => {
-    async function getUser() {
-      try {
-        const { data: { user }, error } = await supabase.auth.getUser();
-        if (error) throw error;
-        if (!user) {
-          router.push('/login');
-          return;
-        }
-
-        const { data: profile, error: profileError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-
-        if (profileError) throw profileError;
-        setUser(profile);
-      } catch (error) {
-        console.error('Error:', error);
-        router.push('/login');
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    getUser();
-  }, [router]);
-
   const handleSignOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      router.push('/login');
+      const result = await signOut();
+      if ('error' in result && result.error) {
+        throw new Error(result.error);
+      }
+      router.refresh();
     } catch (error) {
       console.error('Error signing out:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to sign out. Please try again.',
+        variant: 'destructive'
+      });
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -115,15 +104,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <h1 className="text-2xl font-bold">Bajeti</h1>
           <div className="mt-4 flex items-center gap-3">
             <Avatar>
-              <AvatarImage src={user?.avatar_url} />
+              <AvatarImage src={userMetadata?.avatar_url} />
               <AvatarFallback>
-                {user?.full_name?.[0] || user?.email?.[0]?.toUpperCase()}
+                {userMetadata?.full_name?.[0] || user?.email?.[0]?.toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">
-                {user?.full_name || 'User'}
-              </p>
+              <p className="text-sm font-medium truncate">{userMetadata?.full_name || user?.email}</p>
               <p className="text-xs text-muted-foreground truncate">
                 {user?.email}
               </p>
@@ -153,7 +140,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           })}
           <Button
             variant="ghost"
-            className="w-full justify-start gap-3"
+            className="w-full justify-start gap-3 mt-4"
             onClick={handleSignOut}
           >
             <LogOut className="h-4 w-4" />

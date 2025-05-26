@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card"
 import { TypeWriter } from "@/components/ui/type-writer"
 
 export default function Home() {
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-blue-50">
       <header className="fixed w-full bg-white/80 backdrop-blur-sm border-b border-blue-100/50 z-50">
@@ -26,8 +27,11 @@ export default function Home() {
               >
                 <Link href="/auth/sign-in">Sign in</Link>
               </Button>
-              <Button asChild>
-                <Link href="/auth/sign-up">Sign up</Link>
+              <Button 
+                asChild
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Link href="/auth/sign-up">Get Started</Link>
               </Button>
             </div>
           </div>
@@ -65,6 +69,7 @@ export default function Home() {
                 <motion.div 
                   className="mt-10 flex items-center justify-center gap-x-6 lg:justify-start"
                   initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.6, delay: 0.2 }}
