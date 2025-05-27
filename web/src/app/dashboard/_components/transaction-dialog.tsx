@@ -48,39 +48,25 @@ export function TransactionDialog() {
       const amount = formData.is_income ? Number(formData.amount) : -Number(formData.amount);
       if (isNaN(amount)) throw new Error('Invalid amount');
       
-      // Get the current auth user ID
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      if (!authUser?.id) throw new Error('No authenticated user ID found');
+      // Get the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session?.user?.id) throw new Error('No authenticated user found');
 
       const data = {
         description: String(formData.description).trim(),
         amount: amount,
-        category_id: formData.category_id, // Use the string UUID directly
-        date: formData.transaction_date.toISOString().split('T')[0], // Format Date object to YYYY-MM-DD string
-        user_id: authUser.id, // Use the auth user ID
+        category_id: formData.category_id,
+        date: formData.transaction_date.toISOString().split('T')[0],
+        user_id: session.user.id,
         type: formData.is_income ? 'income' : 'expense',
         is_income: Boolean(formData.is_income)
       };
 
       console.log('Submitting transaction data:', JSON.stringify(data, null, 2));
       
-      // Verify the user exists in the auth.users table
-      const { data: userCheck, error: userError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_id', authUser.id)
-        .single();
-        
-      if (userError) {
-        console.error('User check error:', userError);
-        throw new Error('Failed to verify user');
-      }
-      
-      if (!userCheck) {
-        console.error('User not found in database:', authUser.id);
-        throw new Error('User not found in database');
-      }
+      // Log the data we're about to submit
+      console.log('Submitting transaction with data:', JSON.stringify(data, null, 2));
       
       // Then insert the transaction
       const { data: result, error } = await supabase
