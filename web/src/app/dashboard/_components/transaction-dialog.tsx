@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { TransactionForm } from '@/components/transactions/transaction-form';
 import { createClient } from '@/lib/supabase-client';
+import { useCurrentUser } from '@/hooks/use-supabase-data';
 import { PlusCircle } from 'lucide-react';
 import type { Category } from '@/types/database';
 
@@ -19,6 +20,7 @@ export function TransactionDialog() {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [categories, setCategories] = React.useState<Category[]>([]);
+  const { data: user, isLoading: isUserLoading } = useCurrentUser();
 
   React.useEffect(() => {
     async function fetchCategories() {
@@ -34,19 +36,11 @@ export function TransactionDialog() {
   const handleSubmit = async (formData: any) => {
     setIsLoading(true);
     try {
-      const supabase = await createClient();
-      
-      // Get current session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        throw new Error('Authentication error. Please sign in again.');
-      }
-      if (!session?.user?.id) {
-        console.error('No user session found');
+      if (!user?.id) {
         throw new Error('Please sign in to add transactions.');
       }
 
+      const supabase = await createClient();
       const amount = formData.is_income ? Number(formData.amount) : -Number(formData.amount);
       if (isNaN(amount)) throw new Error('Invalid amount');
 
@@ -55,7 +49,7 @@ export function TransactionDialog() {
         amount: amount,
         category_id: formData.category_id,
         date: formData.transaction_date.toISOString().split('T')[0],
-        user_id: session.user.id,
+        user_id: user.id,
         type: formData.is_income ? 'income' : 'expense',
         is_income: Boolean(formData.is_income)
       };
