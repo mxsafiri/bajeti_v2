@@ -40,23 +40,49 @@ export function TransactionDialog() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
+      const amount = formData.is_income ? Number(formData.amount) : -Number(formData.amount);
+      if (isNaN(amount)) throw new Error('Invalid amount');
+      
       const data = {
-        description: formData.description,
-        amount: formData.is_income ? Number(formData.amount) : -Number(formData.amount), // Negative for expenses
+        description: String(formData.description).trim(),
+        amount: amount,
         category_id: parseInt(formData.category_id),
-        date: formData.transaction_date.toISOString(), // Convert to ISO string
+        date: new Date().toISOString(), // Use current timestamp
         user_id: user.id,
         type: formData.is_income ? 'income' : 'expense',
-        is_income: formData.is_income,
-        account_id: null // Set to null for now, we'll add account selection later
+        is_income: Boolean(formData.is_income)
       };
 
-      console.log('Submitting transaction:', data);
-      const { data: result, error } = await supabase.from('transactions').insert([data]).select().single();
+      console.log('Submitting transaction data:', JSON.stringify(data, null, 2));
+      
+      // First verify the user exists
+      const { data: userCheck } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', user.id)
+        .single();
+        
+      if (!userCheck) {
+        throw new Error('User not found in database');
+      }
+      
+      // Then insert the transaction
+      const { data: result, error } = await supabase
+        .from('transactions')
+        .insert([data])
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
       
       if (!result) {
         throw new Error('No data returned after insert');
       }
+      
+      console.log('Transaction created successfully:', result);
       
       if (error) {
         console.error('Supabase error:', error);
