@@ -56,8 +56,8 @@ export function TransactionDialog() {
       const data = {
         description: String(formData.description).trim(),
         amount: amount,
-        category_id: parseInt(formData.category_id),
-        date: new Date().toISOString(),
+        category_id: formData.category_id, // Use the string UUID directly
+        date: formData.transaction_date.toISOString().split('T')[0], // Format Date object to YYYY-MM-DD string
         user_id: authUser.id, // Use the auth user ID
         type: formData.is_income ? 'income' : 'expense',
         is_income: Boolean(formData.is_income)
