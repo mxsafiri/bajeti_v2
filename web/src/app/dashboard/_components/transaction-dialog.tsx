@@ -48,23 +48,28 @@ export function TransactionDialog() {
       const amount = formData.is_income ? Number(formData.amount) : -Number(formData.amount);
       if (isNaN(amount)) throw new Error('Invalid amount');
       
+      // Get the current auth user ID
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!authUser?.id) throw new Error('No authenticated user ID found');
+
       const data = {
         description: String(formData.description).trim(),
         amount: amount,
         category_id: parseInt(formData.category_id),
-        date: new Date().toISOString(), // Use current timestamp
-        user_id: user.id,
+        date: new Date().toISOString(),
+        user_id: authUser.id, // Use the auth user ID
         type: formData.is_income ? 'income' : 'expense',
         is_income: Boolean(formData.is_income)
       };
 
       console.log('Submitting transaction data:', JSON.stringify(data, null, 2));
       
-      // First verify the user exists and get their ID
+      // Verify the user exists in the auth.users table
       const { data: userCheck, error: userError } = await supabase
         .from('users')
         .select('id')
-        .eq('id', user.id)
+        .eq('auth_id', authUser.id)
         .single();
         
       if (userError) {
@@ -73,7 +78,7 @@ export function TransactionDialog() {
       }
       
       if (!userCheck) {
-        console.error('User not found in database:', user.id);
+        console.error('User not found in database:', authUser.id);
         throw new Error('User not found in database');
       }
       
