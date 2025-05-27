@@ -36,11 +36,26 @@ export function TransactionDialog() {
   const handleSubmit = async (formData: any) => {
     setIsLoading(true);
     try {
-      if (!user?.id) {
+      const supabase = await createClient();
+      
+      // Get current auth user
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      if (authError || !authUser?.id) {
         throw new Error('Please sign in to add transactions.');
       }
 
-      const supabase = await createClient();
+      // Get user's database ID
+      const { data: dbUser, error: dbError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', authUser.id)
+        .single();
+      
+      if (dbError || !dbUser?.id) {
+        console.error('Database error:', dbError);
+        throw new Error('User profile not found. Please try signing out and in again.');
+      }
+
       const amount = formData.is_income ? Number(formData.amount) : -Number(formData.amount);
       if (isNaN(amount)) throw new Error('Invalid amount');
 
@@ -49,7 +64,7 @@ export function TransactionDialog() {
         amount: amount,
         category_id: formData.category_id,
         date: formData.transaction_date.toISOString().split('T')[0],
-        user_id: user.id,
+        user_id: dbUser.id,
         type: formData.is_income ? 'income' : 'expense',
         is_income: Boolean(formData.is_income)
       };
