@@ -38,8 +38,14 @@ export function TransactionDialog() {
       
       // Get current session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-      if (!session?.user?.id) throw new Error('No authenticated user found');
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        throw new Error('Authentication error. Please sign in again.');
+      }
+      if (!session?.user?.id) {
+        console.error('No user session found');
+        throw new Error('Please sign in to add transactions.');
+      }
 
       const amount = formData.is_income ? Number(formData.amount) : -Number(formData.amount);
       if (isNaN(amount)) throw new Error('Invalid amount');
@@ -54,39 +60,29 @@ export function TransactionDialog() {
         is_income: Boolean(formData.is_income)
       };
 
-      console.log('Submitting transaction data:', JSON.stringify(data, null, 2));
-      
       // Log the data we're about to submit
       console.log('Submitting transaction with data:', JSON.stringify(data, null, 2));
       
       // Then insert the transaction
       const { data: result, error } = await supabase
         .from('transactions')
-        .insert([data])
+        .insert(data)
         .select()
         .single();
-      
+
       if (error) {
-        console.error('Database error:', error);
-        throw error;
-      }
-      
-      if (!result) {
-        throw new Error('No data returned after insert');
-      }
-      
-      console.log('Transaction created successfully:', result);
-      
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
+        console.error('Transaction error:', error);
+        if (error.code === 'PGRST301') {
+          throw new Error('Session expired. Please sign in again.');
+        }
+        throw new Error(error.message || 'Failed to add transaction');
       }
 
+      console.log('Transaction added successfully:', result);
       setIsOpen(false);
-      window.location.reload(); // Refresh to show new data
-    } catch (error) {
-      console.error('Error adding transaction:', error);
-      alert('Failed to add transaction. Please try again.');
+    } catch (error: any) {
+      console.error('Failed to add transaction:', error);
+      alert(error.message || 'Failed to add transaction. Please try again.');
     } finally {
       setIsLoading(false);
     }
