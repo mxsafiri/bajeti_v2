@@ -42,11 +42,12 @@ export function TransactionDialog() {
 
       const data = {
         description: formData.description,
-        amount: formData.is_income ? formData.amount : -formData.amount, // Negative for expenses
+        amount: formData.is_income ? Number(formData.amount) : -Number(formData.amount), // Negative for expenses
         category_id: parseInt(formData.category_id),
-        transaction_date: formData.transaction_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
+        date: formData.transaction_date, // Use the full timestamp
         user_id: user.id,
-        type: formData.is_income ? 'income' : 'expense'
+        type: formData.is_income ? 'income' : 'expense',
+        is_income: formData.is_income
       };
 
       console.log('Submitting transaction:', data);
