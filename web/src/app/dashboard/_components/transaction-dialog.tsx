@@ -36,9 +36,14 @@ export function TransactionDialog() {
     try {
       const supabase = await createClient();
       
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      // Get current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session?.user) throw new Error('User not authenticated');
+      
+      // Get access token
+      const { data: { user } } = await supabase.auth.getUser(session.access_token);
+      if (!user) throw new Error('User not found');
 
       const amount = formData.is_income ? Number(formData.amount) : -Number(formData.amount);
       if (isNaN(amount)) throw new Error('Invalid amount');
@@ -55,14 +60,20 @@ export function TransactionDialog() {
 
       console.log('Submitting transaction data:', JSON.stringify(data, null, 2));
       
-      // First verify the user exists
-      const { data: userCheck } = await supabase
+      // First verify the user exists and get their ID
+      const { data: userCheck, error: userError } = await supabase
         .from('users')
         .select('id')
         .eq('id', user.id)
         .single();
         
+      if (userError) {
+        console.error('User check error:', userError);
+        throw new Error('Failed to verify user');
+      }
+      
       if (!userCheck) {
+        console.error('User not found in database:', user.id);
         throw new Error('User not found in database');
       }
       
