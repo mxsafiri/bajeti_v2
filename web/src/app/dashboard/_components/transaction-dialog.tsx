@@ -44,14 +44,19 @@ export function TransactionDialog() {
         description: formData.description,
         amount: formData.is_income ? Number(formData.amount) : -Number(formData.amount), // Negative for expenses
         category_id: parseInt(formData.category_id),
-        date: formData.transaction_date, // Use the full timestamp
+        date: formData.transaction_date.toISOString(), // Convert to ISO string
         user_id: user.id,
         type: formData.is_income ? 'income' : 'expense',
-        is_income: formData.is_income
+        is_income: formData.is_income,
+        account_id: null // Set to null for now, we'll add account selection later
       };
 
       console.log('Submitting transaction:', data);
-      const { error } = await supabase.from('transactions').insert([data]);
+      const { data: result, error } = await supabase.from('transactions').insert([data]).select().single();
+      
+      if (!result) {
+        throw new Error('No data returned after insert');
+      }
       
       if (error) {
         console.error('Supabase error:', error);
