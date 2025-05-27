@@ -31,14 +31,15 @@ import { Textarea } from '@/components/ui/textarea';
 import type { Category } from '@/types/database';
 
 const formSchema = z.object({
-  amount: z.string().min(1).transform((val) => parseFloat(val)), // Handle string input
+  amount: z.string().min(1),
   description: z.string().min(1).max(255),
-  category_id: z.string().min(1), // Handle string input from select
+  category_id: z.string().min(1),
   transaction_date: z.date(),
   is_income: z.boolean().default(false),
 });
 
-type TransactionFormData = z.infer<typeof formSchema>;
+type TransactionFormValues = z.input<typeof formSchema>;
+type TransactionFormData = z.output<typeof formSchema>;
 
 interface TransactionFormProps {
   onSubmit: (data: TransactionFormData) => void;
@@ -47,7 +48,7 @@ interface TransactionFormProps {
 }
 
 export function TransactionForm({ onSubmit, categories, isLoading = false }: TransactionFormProps) {
-  const form = useForm<TransactionFormData>({
+  const form = useForm<TransactionFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       amount: '',
@@ -58,8 +59,13 @@ export function TransactionForm({ onSubmit, categories, isLoading = false }: Tra
     },
   });
 
-  const onSubmitForm = form.handleSubmit((data: TransactionFormData) => {
-    onSubmit(data);
+  const onSubmitForm = form.handleSubmit((data) => {
+    // Transform the amount to number before submitting
+    const transformedData: TransactionFormData = {
+      ...data,
+      amount: parseFloat(data.amount),
+    };
+    onSubmit(transformedData);
   });
 
   return (
@@ -108,8 +114,8 @@ export function TransactionForm({ onSubmit, categories, isLoading = false }: Tra
                 <FormItem>
                   <FormLabel>Category</FormLabel>
                   <Select
-                    onValueChange={(value) => field.onChange(parseInt(value))}
-                    defaultValue={field.value?.toString()}
+                    onValueChange={field.onChange}
+                    value={field.value}
                   >
                     <FormControl>
                       <SelectTrigger>

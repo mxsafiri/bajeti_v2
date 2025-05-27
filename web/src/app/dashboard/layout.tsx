@@ -19,9 +19,8 @@ import { Toaster } from '@/components/ui/toaster';
 import { useToast } from '@/components/ui/use-toast';
 import { signOut } from '@/app/actions';
 import { cn } from '@/lib/utils';
-import { createClient } from '@/lib/supabase-client';
-import type { User } from '@supabase/supabase-js';
-import type { Database } from '@/types/supabase';
+import { useCurrentUser } from '@/hooks/use-supabase-data';
+import type { User } from '@/types/database';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -38,21 +37,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [userMetadata, setUserMetadata] = useState<{ full_name?: string; avatar_url?: string } | null>(null);
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      const supabase = await createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-      if (user) {
-        setUserMetadata(user.user_metadata as { full_name?: string; avatar_url?: string });
-      }
-    };
-
-    fetchUser();
-  }, []);
+  const { data: user, isLoading } = useCurrentUser();
 
   const navItems: NavItem[] = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
@@ -112,15 +97,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <h1 className="text-2xl font-bold">Bajeti</h1>
           <div className="mt-4 flex items-center gap-3">
             <Avatar>
-              <AvatarImage src={userMetadata?.avatar_url} />
+              <AvatarImage src={user?.avatar_url || undefined} />
               <AvatarFallback>
-                {userMetadata?.full_name?.[0] || user?.email?.[0]?.toUpperCase()}
+                {user?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{userMetadata?.full_name || user?.email}</p>
+              <p className="text-sm font-medium truncate">
+                {user?.full_name || user?.username || 'Loading...'}
+              </p>
               <p className="text-xs text-muted-foreground truncate">
-                {user?.email}
+                {user?.email || ''}
               </p>
             </div>
           </div>

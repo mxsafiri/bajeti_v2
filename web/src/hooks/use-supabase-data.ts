@@ -389,6 +389,7 @@ export function useTransactionsForAccount(accountId: number | null, limit = 100)
         categories: {
           id: tx.category_id ? Number(tx.category_id) : 0,
           name: tx.categories.name || '',
+          color: '#808080', // Default gray color for categories without color
           is_system: false,
           created_at: tx.created_at
         }
