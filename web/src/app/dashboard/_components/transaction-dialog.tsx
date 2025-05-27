@@ -39,19 +39,10 @@ export function TransactionDialog() {
       // Get current session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
-      if (!session?.user) throw new Error('User not authenticated');
-      
-      // Get access token
-      const { data: { user } } = await supabase.auth.getUser(session.access_token);
-      if (!user) throw new Error('User not found');
+      if (!session?.user?.id) throw new Error('No authenticated user found');
 
       const amount = formData.is_income ? Number(formData.amount) : -Number(formData.amount);
       if (isNaN(amount)) throw new Error('Invalid amount');
-      
-      // Get the current session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-      if (!session?.user?.id) throw new Error('No authenticated user found');
 
       const data = {
         description: String(formData.description).trim(),
