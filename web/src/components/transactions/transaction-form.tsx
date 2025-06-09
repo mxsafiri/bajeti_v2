@@ -39,7 +39,7 @@ const formSchema = z.object({
 });
 
 type TransactionFormValues = z.input<typeof formSchema>;
-type TransactionFormData = z.output<typeof formSchema>;
+type TransactionFormData = Omit<TransactionFormValues, 'amount'> & { amount: number };
 
 interface TransactionFormProps {
   onSubmit: (data: TransactionFormData) => void;
@@ -60,10 +60,9 @@ export function TransactionForm({ onSubmit, categories, isLoading = false }: Tra
   });
 
   const onSubmitForm = form.handleSubmit((data) => {
-    // Transform the amount to number before submitting
-    const transformedData: TransactionFormData = {
+    const transformedData = {
       ...data,
-      amount: parseFloat(data.amount),
+      amount: parseFloat(data.amount)
     };
     onSubmit(transformedData);
   });
