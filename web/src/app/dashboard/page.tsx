@@ -5,9 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TransactionDialog } from './_components/transaction-dialog';
 import { BudgetDialog } from './_components/budget-dialog';
-import { Overview } from './_components/overview';
-import { RecentExpenses } from './_components/recent-expenses';
-import { CategoryBreakdown } from './_components/category-breakdown';
+import { Overview } from "./_components/overview";
+import { RecentExpenses } from "./_components/recent-expenses";
+import { CategoryBreakdown } from "./_components/category-breakdown";
 import { useTransactions, useCurrentBudget, useCategorySpending } from '@/hooks/use-supabase-data';
 
 interface CategoryBreakdownItem {
@@ -31,6 +31,48 @@ export default function DashboardPage(): React.ReactElement {
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
+    );
+  }
+
+  const hasNoData = !transactions?.length && !currentBudget;
+  
+  if (hasNoData) {
+    return (
+      <main className="flex flex-col gap-8">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Welcome to Bajeti!</h1>
+          <div className="flex gap-2">
+            <BudgetDialog />
+            <TransactionDialog />
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <h2 className="text-xl font-semibold mb-4">Let's get started!</h2>
+          <p className="text-muted-foreground mb-8 max-w-md">
+            To begin tracking your finances, create a budget and add some transactions.
+            Click the buttons above to get started.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+            <Card>
+              <CardHeader>
+                <CardTitle>1. Create a Budget</CardTitle>
+                <CardDescription>
+                  Set up your monthly budget to track your spending against your goals.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>2. Add Transactions</CardTitle>
+                <CardDescription>
+                  Start recording your income and expenses to see where your money goes.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
+        </div>
+      </main>
     );
   }
 
