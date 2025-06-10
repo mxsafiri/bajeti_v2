@@ -12,29 +12,13 @@ const supabase = createBrowserClient<Database>(
 
 // Helper function to get the current user's ID
 async function getCurrentUserId(): Promise<string> {
-  console.log('[Debug] getCurrentUserId: Attempting to get auth user...');
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   
   if (authError || !user) {
-    console.error('[Debug] getCurrentUserId: Auth error or no user.', authError);
     throw new Error('No authenticated user');
   }
-  console.log('[Debug] getCurrentUserId: Auth user obtained:', user.id);
   
-  console.log('[Debug] getCurrentUserId: Attempting to fetch user data from "users" table for auth_id:', user.id);
-  const { data: userData, error: userError } = await supabase
-    .from('users')
-    .select('id')
-    .eq('auth_id', user.id) // Assuming users.auth_id is UUID and matches auth.users.id
-    .single();
-
-  if (userError || !userData) {
-    console.error('[Debug] getCurrentUserId: Error fetching user data from "users" table or no data found.', userError);
-    throw new Error('Failed to fetch user data from "users" table or no data found for this auth_id.');
-  }
-  
-  console.log('[Debug] getCurrentUserId: User data from "users" table obtained, internal ID:', userData.id);
-  return userData.id; // This should be the UUID from public.users.id
+  return user.id;
 }
 
 // Define the return type for the useFetchData hook
@@ -400,60 +384,42 @@ export function useTransactionsForAccount(accountId: number | null, limit = 100)
 
 
 export function useTransactions(limit = 100) {
-  return useFetchData<DbTransaction[]>(async function useTransactionsInternal(): Promise<DbTransaction[]> { // Named the async function
-    console.log('[Debug] useTransactions: Starting.');
+  return useFetchData<DbTransaction[]>(async function useTransactionsInternal(): Promise<DbTransaction[]> {
     const userId = await getCurrentUserId();
-    console.log('[Debug] useTransactions: Obtained internal userId:', userId, 'for limit:', limit);
-
-    // Query transactions using the internal user ID
-    console.log('[Debug] useTransactions: Querying "transactions_with_category_names" view...');
+    
     const { data, error } = await supabase
-      .from('transactions_with_category_names') // Query the new view
-      .select('*') // Select all columns from the view (includes category_name)
-      .eq('user_id', userId) // This user_id is from the view, originating from transactions.user_id (UUID)
+      .from('transactions_with_category_names')
+      .select('*')
+      .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(limit);
 
     if (error) {
-      console.error('[Debug] useTransactions: Error fetching from "transactions_with_category_names" view:', error);
       throw error;
     }
 
-    console.log('[Debug] useTransactions: Successfully fetched data from view:', data);
-
-    // Data from the view is flat. Each item in 'data' will have transaction fields + category_name.
-    // Ensure your DbTransaction type can handle this structure, or adjust the mapping.
-    // Also ensure the view 'transactions_with_category_names' selects all fields needed below (e.g., account_id, updated_at, notes, frequency).
-    return (data || []).map(itemFromView => {
-      const mappedItem: any = { // Using 'any' for the intermediate mapped item for flexibility.
-        id: Number(itemFromView.id),
-        user_id: String(itemFromView.user_id), // transactions.user_id is UUID
-        account_id: itemFromView.account_id == null ? null : Number(itemFromView.account_id),
-        category_id: itemFromView.category_id == null ? null : Number(itemFromView.category_id),
-        amount: Number(itemFromView.amount),
-        date: itemFromView.date,
-        description: itemFromView.description || null,
-        is_income: itemFromView.is_income,
-        receipt_url: itemFromView.receipt_url || null,
-        type: itemFromView.type || null,
-        created_at: itemFromView.created_at,
-        updated_at: itemFromView.updated_at || null,
-        notes: itemFromView.notes || null,
-        frequency: itemFromView.frequency || null
-      };
-
-      if (itemFromView.category_name) {
-        mappedItem.categories = {
-          id: itemFromView.category_id ? Number(itemFromView.category_id) : 0,
-          name: itemFromView.category_name,
-          is_system: false, // Placeholder: view doesn't provide this for category
-          created_at: itemFromView.created_at // Placeholder: using transaction's created_at
-        };
-      } else {
-        // If DbTransaction expects 'categories' to be potentially null or undefined
-        mappedItem.categories = null;
-      }
-      return mappedItem;
-    }) as DbTransaction[]; // Cast the final array to DbTransaction[]
+    return (data || []).map(item => ({
+      id: Number(item.id),
+      user_id: String(item.user_id),
+      account_id: item.account_id == null ? null : Number(item.account_id),
+      category_id: item.category_id == null ? null : Number(item.category_id),
+      amount: Number(item.amount),
+      date: item.date,
+      description: item.description || null,
+      is_income: item.is_income,
+      receipt_url: item.receipt_url || null,
+      type: item.type || null,
+      created_at: item.created_at,
+      updated_at: item.updated_at || null,
+      notes: item.notes || null,
+      frequency: item.frequency || null,
+      categories: item.category_name ? {
+        id: Number(item.category_id) || 0,
+        name: item.category_name,
+        color: '#' + Math.floor(Math.random()*16777215).toString(16), // Generate random color for now
+        is_system: false,
+        created_at: item.created_at
+      } : undefined
+    })) as DbTransaction[];
   }, [limit]);
 }
